@@ -10,12 +10,14 @@ JBL's QuantumENGINE app.
 
 It includes:
 
-- **QuantumEngine**, a small desktop app that follows the headset live.
+- **QuantumEngine**, a desktop app that follows the headset live.
+- **`quantumengined`**, a background service with a system tray menu.
+- **Plasma widget**, for KDE Plasma panel and desktop control.
 - **`quantumenginectl`**, a command-line tool with JSON output for scripts.
 - **`jbl-quantum`**, a Rust library for anyone building their own tools.
 
-Everything talks to the USB dongle directly. It needs no background service,
-no root and no vendor software.
+A background service (`quantumengined`) talks to the USB dongle directly;
+the app, widget and CLI talk to it over D-Bus. No Windows or vendor software needed.
 
 ## What you can do
 
@@ -24,8 +26,10 @@ no root and no vendor software.
 - Set sidetone (hearing your own voice): **Off**, **Low**, **Mid** or **High**
 - Turn the lights on or off
 - Set colours, brightness and animation for the logo and ring lighting
+- Equalizer: JBL headset tuning and 19 sound profiles
+- Virtual 7.1 surround sound
 
-EQ, spatial sound and the auto-off timer aren't supported yet.
+Auto-off timer and hardware volume aren't supported over the dongle.
 
 ## Supported hardware
 
@@ -37,9 +41,19 @@ EQ, spatial sound and the auto-off timer aren't supported yet.
 Other models may use a different protocol, so the tools refuse to talk to them
 rather than guess. If you own one and want to help add it, open an issue.
 
-## Quick start
+## Install
 
-On Arch-based systems (Arch, CachyOS, EndeavourOS, Manjaro):
+### Arch / CachyOS / EndeavourOS / Manjaro (Recommended)
+
+Download the `.pkg.tar.zst` from the
+[latest release](https://github.com/sidmax7/QuantumEngine/releases/latest) and
+install it:
+
+```sh
+sudo pacman -U quantumengine-*-x86_64.pkg.tar.zst
+```
+
+Or build it from source with `makepkg`:
 
 ```sh
 git clone https://github.com/sidmax7/QuantumEngine.git
@@ -47,18 +61,28 @@ cd QuantumEngine/quantum-linux/packaging
 makepkg -si
 ```
 
-On other distributions, with a Rust toolchain installed:
+The package installs the udev rule, desktop launcher, tray service and Plasma widget for you.
+Unplug the dongle and plug it back in afterwards. Once installed, the app updates itself.
+
+### Anywhere else
+
+You need a Rust toolchain (1.88 or newer), Node.js with npm, and WebKitGTK 4.1
+(`webkit2gtk-4.1` on Arch, `libwebkit2gtk-4.1-dev` on Debian and Ubuntu).
 
 ```sh
-cd quantum-linux
-cargo install --path crates/quantumengine
-cargo install --path crates/quantumenginectl
+git clone https://github.com/sidmax7/QuantumEngine.git
+cd QuantumEngine/quantum-linux
+npm --prefix ui ci
+npm --prefix ui run build
+cargo build --release --workspace --features quantumengine/custom-protocol
+sudo install -Dm755 target/release/quantumengine target/release/quantumengined \
+  target/release/quantumenginectl -t /usr/local/bin/
+
 sudo install -Dm644 udev/70-jbl-quantum.rules /etc/udev/rules.d/70-jbl-quantum.rules
 sudo udevadm control --reload
 ```
 
-Then unplug the dongle and plug it back in. Now start **QuantumEngine** from
-your app menu, or run a command:
+Then replug the dongle. Now start **QuantumEngine** from your app menu, or run a command:
 
 ```sh
 quantumenginectl                 # show everything
@@ -74,11 +98,14 @@ Full install notes, command reference and troubleshooting are in
 ```
 quantum-linux/
 ├── crates/
-│   ├── jbl-quantum/       library: device protocol and headset API
-│   ├── quantumenginectl/  command-line tool
-│   └── quantumengine/     desktop app (egui)
-├── udev/               device permission rule
-└── packaging/          PKGBUILD and desktop entry
+│   ├── jbl-quantum/          library: device protocol and headset API
+│   ├── quantumengine-dbus/   D-Bus IPC interface
+│   ├── quantumengined/       background service and system tray
+│   ├── quantumenginectl/     command-line tool
+│   └── quantumengine/        desktop app (Tauri)
+├── packaging/                PKGBUILD, desktop entries, Plasma widget
+├── udev/                     device permission rule
+└── ui/                       Vue 3 frontend
 ```
 
 ## How it works
