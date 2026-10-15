@@ -1,7 +1,7 @@
 //! Command-line control for JBL Quantum 810 Wireless headsets.
 //!
 //! Every command except `devices` (a plain hidraw enumeration, with no
-//! device access) goes through the `quantumengine --tray` service over
+//! device access) goes through the `quantumengined` service over
 //! D-Bus, starting it if it is not already running — this CLI never opens
 //! the headset itself. See `quantumengine-dbus` for the shared contract.
 
@@ -30,6 +30,14 @@ COMMANDS:
                                 configure lighting and switch it on
     watch                       stream state changes until interrupted
     devices                     list detected dongles
+    eq [on|off|<profile>]       show or set the equalizer
+    eq list                     list the EQ profiles
+    eq tuning [off|stereo|surround]
+                                JBL's headset tuning under the profile
+    surround [on|off]           show or set virtual 7.1 surround
+    update                      check GitHub for a newer release
+    update install              install it (asks for your password)
+    update checks [on|off]      show or set the daily update check
 
     rgb zones:    logo, ring, both
     rgb effects:  fade, instant, chase, strobe, chase-strobe-logo,
@@ -105,7 +113,7 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
         "status" => cmd_status(&proxy, json)?,
         "battery" => {
             require_ready(&proxy)?;
-            let pct = proxy.battery().map_err(|e| e.to_string())?;
+            let pct = proxy.battery().map_err(dbus_err)?;
             if json {
                 println!("{{\"battery_percent\":{pct}}}");
             } else {
@@ -114,28 +122,28 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
         }
         "anc" => match params.first() {
             None => {
-                let mode = proxy.anc().map_err(|e| e.to_string())?;
+                let mode = proxy.anc().map_err(dbus_err)?;
                 emit(json, "anc", &mode);
             }
             Some(value) => {
                 parse_anc(value)?;
-                let mode = proxy.set_anc(value).map_err(|e| e.to_string())?;
+                let mode = proxy.set_anc(value).map_err(dbus_err)?;
                 emit(json, "anc", &mode);
             }
         },
         "sidetone" => match params.first() {
             None => {
-                let level = proxy.sidetone().map_err(|e| e.to_string())?;
+                let level = proxy.sidetone().map_err(dbus_err)?;
                 emit(json, "sidetone", &level);
             }
             Some(value) => {
                 parse_sidetone(value)?;
-                let level = proxy.set_sidetone(value).map_err(|e| e.to_string())?;
+                let level = proxy.set_sidetone(value).map_err(dbus_err)?;
                 emit(json, "sidetone", &level);
             }
         },
         "mic" => {
-            let active = proxy.mic_active().map_err(|e| e.to_string())?;
+            let active = proxy.mic_active().map_err(dbus_err)?;
             if json {
                 println!("{{\"mic_active\":{active}}}");
             } else {
@@ -143,7 +151,7 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
             }
         }
         "dial" => {
-            let pos = proxy.dial().map_err(|e| e.to_string())?;
+            let pos = proxy.dial().map_err(dbus_err)?;
             if json {
                 println!("{{\"dial\":{pos},\"label\":\"{}\"}}", dial_label(pos));
             } else {
@@ -152,12 +160,12 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
         }
         "lights" => match params.first() {
             None => {
-                let on = proxy.lights_on().map_err(|e| e.to_string())?;
+                let on = proxy.lights_on().map_err(dbus_err)?;
                 emit(json, "lights", if on { "on" } else { "off" });
             }
             Some(value) => {
                 let on = parse_on_off(value)?;
-                let on = proxy.set_lights(on).map_err(|e| e.to_string())?;
+                let on = proxy.set_lights(on).map_err(dbus_err)?;
                 emit(json, "lights", if on { "on" } else { "off" });
             }
         },
@@ -167,6 +175,9 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
             emit(json, "lighting", "applied");
         }
         "watch" => cmd_watch(&proxy, json)?,
+        "eq" => cmd_eq(&proxy, params, json)?,
+        "surround" => cmd_surround(&proxy, params, json)?,
+        "update" => cmd_update(&proxy, params, json)?,
         other => return Err(format!("unknown command '{other}' (try --help)")),
     }
     Ok(())
@@ -175,7 +186,7 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
 /// Fails with the same wording `Headset::open_first` used to give when
 /// there was no live link, instead of silently showing default values.
 fn require_ready(proxy: &HeadsetProxyBlocking) -> Result<(), String> {
-    match proxy.link().map_err(|e| e.to_string())?.as_str() {
+    match proxy.link().map_err(dbus_err)?.as_str() {
         "ready" => Ok(()),
         "no_dongle" => Err(jbl_quantum::Error::NotFound.to_string()),
         "no_access" => Err(proxy.link_detail().unwrap_or_default()),
@@ -184,25 +195,32 @@ fn require_ready(proxy: &HeadsetProxyBlocking) -> Result<(), String> {
 }
 
 fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
-    let link = proxy.link().map_err(|e| e.to_string())?;
-    let battery = proxy.battery().map_err(|e| e.to_string())?;
-    let anc = proxy.anc().map_err(|e| e.to_string())?;
-    let sidetone = proxy.sidetone().map_err(|e| e.to_string())?;
-    let mic_active = proxy.mic_active().map_err(|e| e.to_string())?;
-    let dial = proxy.dial().map_err(|e| e.to_string())?;
-    let lights_on = proxy.lights_on().map_err(|e| e.to_string())?;
-    let device_name = proxy.device_name().map_err(|e| e.to_string())?;
-    let serial = proxy.serial().map_err(|e| e.to_string())?;
-    let firmware = proxy.firmware().map_err(|e| e.to_string())?;
+    let link = proxy.link().map_err(dbus_err)?;
+    let battery = proxy.battery().map_err(dbus_err)?;
+    let anc = proxy.anc().map_err(dbus_err)?;
+    let sidetone = proxy.sidetone().map_err(dbus_err)?;
+    let mic_active = proxy.mic_active().map_err(dbus_err)?;
+    let dial = proxy.dial().map_err(dbus_err)?;
+    let lights_on = proxy.lights_on().map_err(dbus_err)?;
+    let device_name = proxy.device_name().map_err(dbus_err)?;
+    let serial = proxy.serial().map_err(dbus_err)?;
+    let firmware = proxy.firmware().map_err(dbus_err)?;
+    let eq = Eq::read(proxy)?;
+    let surround = Surround::read(proxy)?;
+    let update = UpdateInfo::read(proxy)?;
 
     if json {
         let fw: Vec<String> = firmware.iter().map(|f| format!("\"{f}\"")).collect();
         println!(
             "{{\"link\":\"{link}\",\"battery_percent\":{battery},\"anc\":\"{anc}\",\"sidetone\":\"{sidetone}\",\
-             \"mic_active\":{mic_active},\"dial\":{dial},\"lights_on\":{lights_on},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}]}}",
+             \"mic_active\":{mic_active},\"dial\":{dial},\"lights_on\":{lights_on},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}],\
+             \"eq\":{},\"surround\":{},\"update\":{}}}",
             escape(&device_name),
             escape(&serial),
-            fw.join(",")
+            fw.join(","),
+            eq.json(),
+            surround.json(),
+            update.json()
         );
     } else {
         if link != "ready" {
@@ -218,8 +236,241 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
         println!("paired to: {device_name}");
         println!("serial:    {serial}");
         println!("firmware:  {}", firmware.join(", "));
+        println!("eq:        {}", eq.summary());
+        println!("surround:  {}", surround.summary());
+        if !update.available.is_empty() {
+            println!("update:    {} available (you have {})", update.available, update.version);
+        }
     }
     Ok(())
+}
+
+struct Eq {
+    enabled: bool,
+    profile: String,
+    profiles: Vec<String>,
+    tuning: String,
+    status: String,
+}
+
+impl Eq {
+    fn read(proxy: &HeadsetProxyBlocking) -> Result<Self, String> {
+        Ok(Self {
+            enabled: proxy.eq_enabled().map_err(dbus_err)?,
+            profile: proxy.eq_profile().map_err(dbus_err)?,
+            profiles: proxy.eq_profiles().map_err(dbus_err)?,
+            tuning: proxy.eq_correction().map_err(dbus_err)?,
+            status: proxy.eq_status().map_err(dbus_err)?,
+        })
+    }
+
+    fn summary(&self) -> String {
+        let state = if self.enabled { "on" } else { "off" };
+        let mut text = format!("{state}, {} (headset tuning: {})", self.profile, self.tuning);
+        if !self.status.is_empty() {
+            text.push_str(&format!(" — {}", self.status));
+        }
+        text
+    }
+
+    fn json(&self) -> String {
+        let profiles: Vec<String> = self.profiles.iter().map(|p| format!("\"{}\"", escape(p))).collect();
+        format!(
+            "{{\"enabled\":{},\"profile\":\"{}\",\"tuning\":\"{}\",\"status\":\"{}\",\"profiles\":[{}]}}",
+            self.enabled,
+            escape(&self.profile),
+            escape(&self.tuning),
+            escape(&self.status),
+            profiles.join(",")
+        )
+    }
+}
+
+struct Surround {
+    enabled: bool,
+    status: String,
+}
+
+impl Surround {
+    fn read(proxy: &HeadsetProxyBlocking) -> Result<Self, String> {
+        Ok(Self {
+            enabled: proxy.surround_enabled().map_err(dbus_err)?,
+            status: proxy.surround_status().map_err(dbus_err)?,
+        })
+    }
+
+    fn summary(&self) -> String {
+        let mut text = if self.enabled { "on (virtual 7.1)" } else { "off" }.to_string();
+        if !self.status.is_empty() {
+            text.push_str(&format!(" — {}", self.status));
+        }
+        text
+    }
+
+    fn json(&self) -> String {
+        format!("{{\"enabled\":{},\"status\":\"{}\"}}", self.enabled, escape(&self.status))
+    }
+}
+
+fn cmd_surround(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
+    match params.first().map(String::as_str) {
+        None => {}
+        Some("on") => drop(proxy.set_surround_enabled(true).map_err(dbus_err)?),
+        Some("off") => drop(proxy.set_surround_enabled(false).map_err(dbus_err)?),
+        Some(other) => return Err(format!("surround takes on or off, not '{other}'")),
+    }
+    let surround = Surround::read(proxy)?;
+    if json {
+        println!("{}", surround.json());
+    } else {
+        println!("{}", surround.summary());
+    }
+    Ok(())
+}
+
+struct UpdateInfo {
+    version: String,
+    available: String,
+    url: String,
+    can_install: bool,
+    busy: bool,
+    status: String,
+}
+
+impl UpdateInfo {
+    fn read(proxy: &HeadsetProxyBlocking) -> Result<Self, String> {
+        Ok(Self {
+            version: proxy.version().map_err(dbus_err)?,
+            available: proxy.update_version().map_err(dbus_err)?,
+            url: proxy.update_url().map_err(dbus_err)?,
+            can_install: proxy.update_can_install().map_err(dbus_err)?,
+            busy: proxy.update_busy().map_err(dbus_err)?,
+            status: proxy.update_status().map_err(dbus_err)?,
+        })
+    }
+
+    fn json(&self) -> String {
+        format!(
+            "{{\"version\":\"{}\",\"available\":\"{}\",\"url\":\"{}\",\"can_install\":{},\"busy\":{},\"status\":\"{}\"}}",
+            escape(&self.version),
+            escape(&self.available),
+            escape(&self.url),
+            self.can_install,
+            self.busy,
+            escape(&self.status)
+        )
+    }
+}
+
+fn cmd_eq(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
+    match params.first().map(String::as_str) {
+        None => {}
+        Some("on") => drop(proxy.set_eq_enabled(true).map_err(dbus_err)?),
+        Some("off") => drop(proxy.set_eq_enabled(false).map_err(dbus_err)?),
+        Some("list") => {
+            let eq = Eq::read(proxy)?;
+            if json {
+                let names: Vec<String> = eq.profiles.iter().map(|p| format!("\"{}\"", escape(p))).collect();
+                println!("[{}]", names.join(","));
+            } else {
+                for p in &eq.profiles {
+                    println!("{} {p}", if *p == eq.profile { "*" } else { " " });
+                }
+            }
+            return Ok(());
+        }
+        Some("tuning") => match params.get(1) {
+            None => {}
+            Some(v) => drop(proxy.set_eq_correction(v).map_err(dbus_err)?),
+        },
+        // Profile names have spaces, so take everything after `eq`.
+        Some(_) => drop(proxy.set_eq_profile(&params.join(" ")).map_err(dbus_err)?),
+    }
+    let eq = Eq::read(proxy)?;
+    if json {
+        println!("{}", eq.json());
+    } else {
+        println!("{}", eq.summary());
+        if !eq.enabled && !params.is_empty() && !matches!(params[0].as_str(), "off") {
+            println!("(the EQ is off; `quantumenginectl eq on` applies it)");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_update(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
+    match params.first().map(String::as_str) {
+        None | Some("check") => {
+            proxy.check_for_updates().map_err(dbus_err)?;
+            let u = UpdateInfo::read(proxy)?;
+            if json {
+                println!("{}", u.json());
+            } else if u.available.is_empty() {
+                println!("QuantumEngine {} is up to date", u.version);
+            } else {
+                println!("QuantumEngine {} is available (you have {})", u.available, u.version);
+                println!("{}", u.url);
+                if u.can_install {
+                    println!("Install it with: quantumenginectl update install");
+                } else {
+                    println!("This copy wasn't installed by pacman; update it the way you installed it.");
+                }
+            }
+            Ok(())
+        }
+        Some("install") => cmd_update_install(proxy),
+        Some("checks") => {
+            match params.get(1).map(String::as_str) {
+                None => {}
+                Some(v) => drop(proxy.set_update_checks(parse_on_off(v)?).map_err(dbus_err)?),
+            }
+            let on = proxy.update_checks().map_err(dbus_err)?;
+            emit(json, "update_checks", if on { "on" } else { "off" });
+            Ok(())
+        }
+        Some(other) => Err(format!("unknown update command '{other}' (check, install, checks)")),
+    }
+}
+
+/// Starts the install and follows it until the service restarts with the new
+/// version or reports a failure.
+fn cmd_update_install(proxy: &HeadsetProxyBlocking) -> Result<(), String> {
+    let available = proxy.check_for_updates().map_err(dbus_err)?;
+    if available.is_empty() {
+        println!("QuantumEngine {} is up to date", proxy.version().map_err(dbus_err)?);
+        return Ok(());
+    }
+    proxy.install_update().map_err(dbus_err)?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(15 * 60);
+    let mut last = String::new();
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(500));
+        let (status, busy, version) = match (proxy.update_status(), proxy.update_busy(), proxy.version()) {
+            (Ok(s), Ok(b), Ok(v)) => (s, b, v),
+            // The old service has exited and the new one isn't up yet.
+            _ => continue,
+        };
+        if version == available {
+            println!("QuantumEngine {available} is installed and running.");
+            return Ok(());
+        }
+        if status != last && !status.is_empty() {
+            println!("{status}");
+            last = status.clone();
+        }
+        if !busy && status.starts_with("Update failed") {
+            return Err(status);
+        }
+    }
+    Err("the update is taking too long; check `quantumenginectl update`".into())
+}
+
+/// The message of a D-Bus error, without the error name zbus puts in front.
+fn dbus_err(e: zbus::Error) -> String {
+    match e {
+        zbus::Error::MethodError(_, Some(msg), _) => msg,
+        other => other.to_string(),
+    }
 }
 
 fn link_note(link: &str) -> &'static str {
@@ -284,7 +535,7 @@ fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String
         })
         .collect();
 
-    proxy.set_lighting(args).map_err(|e| e.to_string())
+    proxy.set_lighting(args).map_err(dbus_err)
 }
 
 /// State `watch` compares between polls, since the service exposes changes
@@ -306,13 +557,13 @@ struct WatchState {
 impl WatchState {
     fn read(proxy: &HeadsetProxyBlocking) -> Result<Self, String> {
         Ok(Self {
-            link: proxy.link().map_err(|e| e.to_string())?,
-            battery: proxy.battery().map_err(|e| e.to_string())?,
-            anc: proxy.anc().map_err(|e| e.to_string())?,
-            sidetone: proxy.sidetone().map_err(|e| e.to_string())?,
-            mic_active: proxy.mic_active().map_err(|e| e.to_string())?,
-            dial: proxy.dial().map_err(|e| e.to_string())?,
-            lights_on: proxy.lights_on().map_err(|e| e.to_string())?,
+            link: proxy.link().map_err(dbus_err)?,
+            battery: proxy.battery().map_err(dbus_err)?,
+            anc: proxy.anc().map_err(dbus_err)?,
+            sidetone: proxy.sidetone().map_err(dbus_err)?,
+            mic_active: proxy.mic_active().map_err(dbus_err)?,
+            dial: proxy.dial().map_err(dbus_err)?,
+            lights_on: proxy.lights_on().map_err(dbus_err)?,
         })
     }
 }

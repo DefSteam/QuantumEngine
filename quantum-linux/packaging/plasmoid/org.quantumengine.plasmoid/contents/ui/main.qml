@@ -1,7 +1,7 @@
 // The Plasma widget for QuantumEngine.
 //
 // Plasma has no first-class QML binding for an arbitrary D-Bus service, so
-// this reaches `quantumengine --tray` through the "executable" data engine:
+// this reaches `quantumengined` (the service) through the "executable" data engine:
 // `quantumenginectl --json status` to read state, `quantumenginectl <command>`
 // to change it. That is the same service, over the same D-Bus contract, that
 // the window and the tray icon use, and `quantumenginectl` starts it if it
@@ -33,11 +33,26 @@ PlasmoidItem {
     property string anc: "off"
     property bool lightsOn: false
 
+    // The EQ runs on the PC, so it's usable whenever the service answers,
+    // headset connected or not. Older services don't report it at all.
+    property bool eqSupported: false
+    property bool eqEnabled: false
+    property string eqProfile: "Flat"
+    property var eqProfiles: []
+    property string eqStatus: ""
+
+    property string updateVersion: ""
+    property string updateUrl: ""
+    property bool updateCanInstall: false
+    property bool updateBusy: false
+    property string updateStatus: ""
+
     // A `Set*` command is in flight. Controls stay disabled until it answers,
     // so repeated clicks can't pile commands up on the headset.
     property bool busy: false
     property string errorText: ""
 
+    readonly property bool serviceUp: link !== "" && statusError === ""
     readonly property bool ready: link === "ready" && statusError === ""
     readonly property bool batteryLow: ready && battery <= lowBattery
 
@@ -83,6 +98,31 @@ PlasmoidItem {
         runSet(`quantumenginectl lights ${on ? "on" : "off"}`);
     }
 
+    function setEqEnabled(on) {
+        if (busy) {
+            return;
+        }
+        eqEnabled = on;
+        runSet(`quantumenginectl eq ${on ? "on" : "off"}`);
+    }
+
+    function setEqProfile(name) {
+        if (busy || name === eqProfile) {
+            return;
+        }
+        eqProfile = name;
+        // Profile names are the service's own, but quote them for the shell
+        // all the same.
+        runSet(`quantumenginectl eq '${name.replace(/'/g, "")}'`);
+    }
+
+    // Not `runSet`: this runs until the install finishes, and the headset
+    // controls shouldn't lock up meanwhile. Progress arrives in updateStatus.
+    function installUpdate() {
+        updateBusy = true;
+        executable.connectSource("quantumenginectl update install");
+    }
+
     Plasmoid.icon: "audio-headphones-symbolic"
     Plasmoid.status: {
         if (batteryLow) {
@@ -92,7 +132,11 @@ PlasmoidItem {
     }
 
     toolTipMainText: "QuantumEngine"
-    toolTipSubText: ready ? `Battery ${battery}% · ANC ${ancLabel(anc)} · Lights ${lightsOn ? "on" : "off"}` : statusText()
+    toolTipSubText: {
+        const eq = eqSupported ? ` · EQ ${eqEnabled ? eqProfile : "off"}` : "";
+        const update = updateVersion !== "" ? `\nUpdate ${updateVersion} available` : "";
+        return (ready ? `Battery ${battery}% · ANC ${ancLabel(anc)} · Lights ${lightsOn ? "on" : "off"}${eq}` : statusText()) + update;
+    }
 
     function ancLabel(mode) {
         switch (mode) {
@@ -130,6 +174,22 @@ PlasmoidItem {
                     if (!root.busy) {
                         root.anc = s.anc;
                         root.lightsOn = s.lights_on;
+                    }
+                    root.eqSupported = s.eq !== undefined;
+                    if (root.eqSupported) {
+                        root.eqProfiles = s.eq.profiles;
+                        root.eqStatus = s.eq.status;
+                        if (!root.busy) {
+                            root.eqEnabled = s.eq.enabled;
+                            root.eqProfile = s.eq.profile;
+                        }
+                    }
+                    if (s.update !== undefined) {
+                        root.updateVersion = s.update.available;
+                        root.updateUrl = s.update.url;
+                        root.updateCanInstall = s.update.can_install;
+                        root.updateBusy = s.update.busy;
+                        root.updateStatus = s.update.status;
                     }
                 } catch (e) {
                     // A half-written line from a service that's just starting.
@@ -225,6 +285,51 @@ PlasmoidItem {
         }
 
         Kirigami.Separator { Layout.fillWidth: true }
+
+        // A newer release, when the service has found one.
+        RowLayout {
+            visible: root.updateVersion !== ""
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.smallSpacing
+            Layout.rightMargin: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.largeSpacing
+
+            Kirigami.Icon {
+                source: "system-software-update-symbolic"
+                Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                PlasmaComponents3.Label {
+                    Layout.fillWidth: true
+                    text: `Update ${root.updateVersion} available`
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+                PlasmaComponents3.Label {
+                    visible: root.updateStatus !== ""
+                    Layout.fillWidth: true
+                    text: root.updateStatus
+                    opacity: 0.7
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            PlasmaComponents3.Button {
+                visible: root.updateCanInstall
+                enabled: !root.updateBusy
+                text: "Install"
+                onClicked: root.installUpdate()
+            }
+            PlasmaComponents3.ToolButton {
+                visible: !root.updateCanInstall
+                text: "View"
+                onClicked: Qt.openUrlExternally(root.updateUrl)
+            }
+        }
 
         // Battery.
         RowLayout {
@@ -363,6 +468,60 @@ PlasmoidItem {
                 text: root.statusText()
                 wrapMode: Text.WordWrap
                 opacity: 0.7
+            }
+        }
+
+        // Equalizer.
+        ColumnLayout {
+            visible: root.serviceUp && root.eqSupported
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.smallSpacing
+            Layout.rightMargin: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.Icon {
+                    source: "view-media-equalizer-symbolic"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                }
+
+                PlasmaComponents3.Label {
+                    Layout.fillWidth: true
+                    text: "Equalizer"
+                    font.bold: true
+                }
+
+                PlasmaComponents3.Switch {
+                    checked: root.eqEnabled
+                    enabled: !root.busy
+                    onToggled: {
+                        root.setEqEnabled(checked);
+                        checked = Qt.binding(() => root.eqEnabled);
+                    }
+                }
+            }
+
+            PlasmaComponents3.ComboBox {
+                Layout.fillWidth: true
+                enabled: root.eqEnabled && !root.busy
+                model: root.eqProfiles
+                currentIndex: root.eqProfiles.indexOf(root.eqProfile)
+                onActivated: index => {
+                    root.setEqProfile(root.eqProfiles[index]);
+                    currentIndex = Qt.binding(() => root.eqProfiles.indexOf(root.eqProfile));
+                }
+            }
+
+            PlasmaComponents3.Label {
+                visible: root.eqStatus !== ""
+                Layout.fillWidth: true
+                text: root.eqStatus
+                color: Kirigami.Theme.negativeTextColor
+                wrapMode: Text.WordWrap
             }
         }
 

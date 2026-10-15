@@ -1,99 +1,123 @@
-//! Desktop control panel for the JBL Quantum 810 Wireless.
+//! The QuantumEngine window: a Tauri shell around the Vue interface in
+//! `ui/`. Thin by design. It never opens the headset; every command is a
+//! D-Bus call to `quantumengined` (see `quantumengine-dbus`), which this
+//! starts when it isn't running.
 //!
-//! `quantumengine` opens the window. `quantumengine --tray` instead runs the
-//! background service that owns the headset and exposes it on D-Bus (see
-//! `quantumengine-dbus`); from step 3 onward that mode also owns the tray
-//! icon. Only the `--tray` process should ever call `jbl_quantum::Headset`
-//! directly — everything else, including this same binary's own window, is
-//! meant to become a D-Bus client of it.
+//! `quantumengine --tray` used to be the service itself, and now just
+//! hands over to `quantumengined`, so older autostart entries and scripts
+//! keep working.
 
-mod app;
-mod dbus_client;
-mod dbus_service;
-mod device;
-mod tray;
+mod commands;
+mod dto;
+mod lighting;
+mod service;
 
-use eframe::egui;
-use std::process::ExitCode;
+use std::sync::Arc;
+use tauri::Manager;
+use tauri_specta::{collect_commands, collect_events, Builder};
 
-/// The app icon, also installed system-wide by the package (see
-/// `packaging/icons`). Embedded here too so the window has one even when run
-/// straight out of `target/release`, unpackaged.
-const ICON_PNG: &[u8] = include_bytes!("../icon.png");
+/// The command and event list, shared by the app and the bindings export.
+fn specta_builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            commands::state,
+            commands::info,
+            commands::set_anc,
+            commands::set_sidetone,
+            commands::set_lights,
+            commands::lighting,
+            commands::apply_lighting,
+            commands::set_eq_enabled,
+            commands::set_eq_profile,
+            commands::set_eq_correction,
+            commands::eq_response,
+            commands::set_surround_enabled,
+            commands::check_for_updates,
+            commands::install_update,
+            commands::set_update_checks,
+            commands::restart_service,
+            commands::open_release_page,
+            commands::open_project_page,
+        ])
+        .events(collect_events![dto::StateEvent])
+}
 
-fn main() -> ExitCode {
+fn main() {
     if std::env::args().any(|a| a == "--tray") {
-        match run_tray() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("quantumengine --tray: {e}");
-                ExitCode::FAILURE
-            }
-        }
-    } else {
-        match run_window() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("quantumengine: {e}");
-                ExitCode::FAILURE
-            }
-        }
+        let err = hand_over_to_service();
+        eprintln!("quantumengine: cannot start quantumengined: {err}");
+        std::process::exit(1);
     }
-}
+    linux_webview_workarounds();
 
-/// Starts the tray icon, claims the D-Bus name, and starts the one worker
-/// thread that owns the headset — everything else in the process (the tray's
-/// own render methods, and every D-Bus client) only ever reads `shared` or
-/// sends a [`device::Command`], never touching the headset directly.
-fn run_tray() -> Result<(), Box<dyn std::error::Error>> {
-    let shared = device::Shared::default();
-    let (commands, command_rx) = std::sync::mpsc::channel();
-
-    let Some((connection, dbus_refresh)) = dbus_service::serve(shared.clone(), commands.clone())? else {
-        // The widget, the window, `quantumenginectl` and the login autostart
-        // can all start a service at about the same moment; whichever loses
-        // the bus name just leaves, before it makes a tray icon or opens the
-        // dongle.
-        println!("quantumengine: already running");
-        return Ok(());
-    };
-    let tray_handle = tray::spawn(shared.clone(), commands)?;
-    let tray_refresh = tray::refresh(tray_handle);
-
-    std::thread::Builder::new()
-        .name("headset".into())
-        .spawn(move || {
-            device::run(shared, command_rx, move || {
-                dbus_refresh();
-                tray_refresh();
-            })
+    let builder = specta_builder();
+    let link = Arc::new(service::Link::default());
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                drop(window.unminimize());
+                drop(window.show());
+                drop(window.set_focus());
+            }
+        }))
+        .manage(Arc::clone(&link))
+        .invoke_handler(builder.invoke_handler())
+        .setup(move |app| {
+            builder.mount_events(app);
+            service::watch(app.handle().clone(), link);
+            Ok(())
         })
-        .expect("failed to start the headset thread");
-
-    println!("quantumengine: serving {} on the session bus", quantumengine_dbus::BUS_NAME);
-    // Keeps the bus name claimed for the process's lifetime; the tray icon's
-    // own background thread (owned by `tray_handle`, dropped only on exit)
-    // is what actually keeps the process alive day to day.
-    let _connection = connection;
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(3600));
+        .run(tauri::generate_context!());
+    if let Err(e) = result {
+        eprintln!("quantumengine: the window failed to start: {e}");
+        std::process::exit(1);
     }
 }
 
-fn run_window() -> eframe::Result {
-    let icon = eframe::icon_data::from_png_bytes(ICON_PNG).expect("bundled icon.png is a valid PNG");
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("QuantumEngine")
-            .with_app_id("quantumengine")
-            .with_icon(icon)
-            .with_inner_size([420.0, 620.0])
-            .with_min_inner_size([360.0, 360.0]),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "quantumengine",
-        options,
-        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
-    )
+/// Replaces this process with `quantumengined`. Only returns on failure.
+fn hand_over_to_service() -> std::io::Error {
+    use std::os::unix::process::CommandExt;
+    let sibling = std::env::current_exe()
+        .ok()
+        .map(|exe| exe.with_file_name("quantumengined"))
+        .filter(|p| p.is_file());
+    std::process::Command::new(sibling.unwrap_or_else(|| "quantumengined".into())).exec()
+}
+
+/// WebKitGTK's DMA-BUF renderer fails on a number of GPU, driver and Wayland
+/// combinations: the window stays blank, or the app exits with "Error 71
+/// (Protocol error) dispatching to Wayland display". Turning it off costs a
+/// little rendering speed and works everywhere. Anyone who wants it back
+/// sets `WEBKIT_DISABLE_DMABUF_RENDERER=0` themselves.
+fn linux_webview_workarounds() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // Called first thing in `main`, before any other thread exists.
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use specta_typescript::Typescript;
+
+    /// The committed `ui/src/bindings.ts` must match the Rust types.
+    /// Regenerate with `QUANTUMENGINE_UPDATE_BINDINGS=1 cargo test -p quantumengine`.
+    #[test]
+    fn bindings_are_up_to_date() {
+        let committed = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/bindings.ts");
+        let fresh = std::env::temp_dir().join(format!("quantumengine-bindings-{}.ts", std::process::id()));
+        specta_builder().export(Typescript::default(), &fresh).expect("export bindings");
+        let fresh_text = std::fs::read_to_string(&fresh).unwrap();
+        std::fs::remove_file(&fresh).unwrap();
+        if std::env::var_os("QUANTUMENGINE_UPDATE_BINDINGS").is_some() {
+            std::fs::write(&committed, &fresh_text).unwrap();
+            return;
+        }
+        let committed_text = std::fs::read_to_string(&committed).unwrap_or_default();
+        assert!(
+            committed_text == fresh_text,
+            "ui/src/bindings.ts is stale; run QUANTUMENGINE_UPDATE_BINDINGS=1 cargo test -p quantumengine"
+        );
+    }
 }

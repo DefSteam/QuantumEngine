@@ -9,6 +9,9 @@
 //! prompt ksni to call the render methods below again and diff the result.
 
 use crate::device::{self, Link, Shared, Snapshot};
+use crate::eq::{self, profiles::{Correction, PROFILES}};
+use crate::surround;
+use crate::update;
 use jbl_quantum::Anc;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::{CheckmarkItem, RadioGroup, RadioItem, StandardItem, SubMenu};
@@ -38,6 +41,9 @@ static ICON: LazyLock<ksni::Icon> = LazyLock::new(|| {
 pub struct QuantumTray {
     shared: Shared,
     commands: Sender<device::Command>,
+    eq: eq::Handle,
+    surround: surround::Handle,
+    updater: update::Handle,
     /// Whether the last-seen battery level already triggered a
     /// notification, so a level that stays low doesn't repeat it.
     battery_notified: Cell<bool>,
@@ -95,7 +101,8 @@ impl ksni::Tray for QuantumTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let snap = self.snap();
-        vec![
+        let mut items = update_items(&self.updater.state());
+        items.extend([
             SubMenu {
                 label: "Noise control".into(),
                 submenu: vec![anc_radio_group(&snap)],
@@ -118,6 +125,17 @@ impl ksni::Tray for QuantumTray {
                 ..Default::default()
             }
             .into(),
+            eq_menu(&self.eq.state()),
+            CheckmarkItem {
+                label: "Virtual surround 7.1".into(),
+                checked: self.surround.state().enabled,
+                activate: Box::new(|this: &mut Self| {
+                    let on = !this.surround.state().enabled;
+                    this.surround.send(surround::Command::Enable(on, surround::no_reply()));
+                }),
+                ..Default::default()
+            }
+            .into(),
             MenuItem::Separator,
             StandardItem {
                 label: "Open window".into(),
@@ -132,8 +150,96 @@ impl ksni::Tray for QuantumTray {
                 ..Default::default()
             }
             .into(),
-        ]
+        ]);
+        items
     }
+}
+
+fn eq_menu(state: &eq::State) -> MenuItem<QuantumTray> {
+    let label = if state.enabled { format!("Equalizer: {}", state.profile) } else { "Equalizer: off".into() };
+    let mut submenu = vec![
+        CheckmarkItem {
+            label: "Enabled".into(),
+            checked: state.enabled,
+            activate: Box::new(|this: &mut QuantumTray| {
+                let on = !this.eq.state().enabled;
+                this.eq.send(eq::Command::Enable(on, eq::no_reply()));
+            }),
+            ..Default::default()
+        }
+        .into(),
+    ];
+    if !state.status.is_empty() {
+        submenu.push(StandardItem { label: state.status.clone(), enabled: false, ..Default::default() }.into());
+    }
+    submenu.push(MenuItem::Separator);
+    submenu.push(
+        RadioGroup {
+            selected: PROFILES.iter().position(|p| p.name == state.profile).unwrap_or(0),
+            select: Box::new(|this: &mut QuantumTray, index| {
+                this.eq.send(eq::Command::Profile(PROFILES[index].name.into(), eq::no_reply()));
+            }),
+            options: PROFILES.iter().map(|p| RadioItem { label: p.name.into(), ..Default::default() }).collect(),
+        }
+        .into(),
+    );
+    submenu.push(MenuItem::Separator);
+    submenu.push(
+        SubMenu {
+            label: "Headset tuning".into(),
+            submenu: vec![RadioGroup {
+                selected: Correction::ALL.iter().position(|&c| c == state.correction).unwrap_or(0),
+                select: Box::new(|this: &mut QuantumTray, index| {
+                    this.eq.send(eq::Command::Correction(Correction::ALL[index], eq::no_reply()));
+                }),
+                options: Correction::ALL
+                    .iter()
+                    .map(|c| RadioItem { label: correction_label(*c).into(), ..Default::default() })
+                    .collect(),
+            }
+            .into()],
+            ..Default::default()
+        }
+        .into(),
+    );
+    SubMenu { label, submenu, ..Default::default() }.into()
+}
+
+pub fn correction_label(c: Correction) -> &'static str {
+    match c {
+        Correction::Off => "Off",
+        Correction::Stereo => "JBL stereo",
+        Correction::Surround => "JBL surround",
+    }
+}
+
+/// An "Install update" entry (or a link to the release, or what the updater
+/// is busy with) at the top of the menu, only while there is something to say.
+fn update_items(state: &update::State) -> Vec<MenuItem<QuantumTray>> {
+    let item: MenuItem<QuantumTray> = match &state.available {
+        _ if state.busy && !state.status.is_empty() => {
+            StandardItem { label: state.status.clone(), enabled: false, ..Default::default() }.into()
+        }
+        Some(r) if state.can_install() => StandardItem {
+            label: format!("Install update {}", r.version),
+            icon_name: "system-software-update".into(),
+            activate: Box::new(|this: &mut QuantumTray| this.updater.send(update::Command::Install(update::no_reply()))),
+            ..Default::default()
+        }
+        .into(),
+        Some(r) => {
+            let url = r.url.clone();
+            StandardItem {
+                label: format!("Update {} available…", r.version),
+                icon_name: "system-software-update".into(),
+                activate: Box::new(move |_: &mut QuantumTray| update::open_url(&url)),
+                ..Default::default()
+            }
+            .into()
+        }
+        None => return Vec::new(),
+    };
+    vec![item, MenuItem::Separator]
 }
 
 fn anc_radio_group(snap: &Snapshot) -> MenuItem<QuantumTray> {
@@ -184,16 +290,23 @@ fn tooltip_text(snap: &Snapshot) -> String {
     }
 }
 
-/// Opens a new window process. A plain `quantumengine` with no arguments
-/// only ever talks to the headset over D-Bus (see `dbus_client`), so running
-/// it alongside this tray is never two clients on one dongle.
+/// Starts the `quantumengine` window: the one next to this executable when
+/// there is one (a development build in `target/`), else whichever is on
+/// `PATH`. The window only talks to this service over D-Bus, and is
+/// single-instance, so a second click just raises it.
 fn open_window() {
-    let Ok(exe) = std::env::current_exe() else {
-        eprintln!("quantumengine: cannot find my own executable to open a window");
-        return;
-    };
-    if let Err(e) = std::process::Command::new(exe).spawn() {
-        eprintln!("quantumengine: failed to open a window: {e}");
+    let sibling = std::env::current_exe()
+        .ok()
+        .map(|exe| exe.with_file_name("quantumengine"))
+        .filter(|p| p.is_file());
+    let program = sibling.unwrap_or_else(|| "quantumengine".into());
+    let result = std::process::Command::new(program)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Err(e) = result {
+        eprintln!("quantumengined: failed to open a window: {e}");
     }
 }
 
@@ -205,18 +318,28 @@ fn notify_low_battery(pct: u8) {
         .urgency(notify_rust::Urgency::Critical)
         .show();
     if let Err(e) = result {
-        eprintln!("quantumengine: failed to show the low-battery notification: {e}");
+        eprintln!("quantumengined: failed to show the low-battery notification: {e}");
     }
 }
 
 /// Spawns the tray icon and returns a handle. Call `handle.update(|_| {})`
 /// whenever `shared` changes, to prompt ksni to re-render.
-pub fn spawn(shared: Shared, commands: Sender<device::Command>) -> Result<Handle<QuantumTray>, ksni::Error> {
-    QuantumTray { shared, commands, battery_notified: Cell::new(false) }.spawn()
+pub fn spawn(
+    shared: Shared,
+    commands: Sender<device::Command>,
+    eq: eq::Handle,
+    surround: surround::Handle,
+    updater: update::Handle,
+) -> Result<Handle<QuantumTray>, ksni::Error> {
+    // Wait for a tray host instead of failing when there isn't one yet (the
+    // service can start before Plasma's at login) or at all.
+    QuantumTray { shared, commands, eq, surround, updater, battery_notified: Cell::new(false) }
+        .assume_sni_available(true)
+        .spawn()
 }
 
-/// A closure to hand to [`device::run`] as its refresh callback.
-pub fn refresh(handle: Handle<QuantumTray>) -> impl Fn() {
+/// A closure that makes ksni re-render the icon, tooltip and menu.
+pub fn refresh(handle: Handle<QuantumTray>) -> impl Fn() + Send + Sync {
     move || {
         handle.update(|_| {});
     }

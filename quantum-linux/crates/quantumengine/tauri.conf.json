@@ -1,0 +1,34 @@
+{
+  "$schema": "../../ui/node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "QuantumEngine",
+  "identifier": "org.quantumengine.app",
+  "mainBinaryName": "quantumengine",
+  "build": {
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "../../ui" },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../../ui" },
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../../ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "QuantumEngine",
+        "width": 440,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 520,
+        "backgroundColor": "#0e0f12"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost ws://localhost:1420 http://localhost:1420; object-src 'none'; base-uri 'none'",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.png"]
+  }
+}

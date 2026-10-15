@@ -1,21 +1,31 @@
 # Maintainer: sidmax
 pkgname=quantumengine
-pkgver=0.2.1
+pkgver=0.3.0
 pkgrel=1
-pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting (GUI, tray, Plasma widget, CLI)"
+pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting, EQ, virtual surround (GUI, tray, Plasma widget, CLI)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/sidmax7/QuantumEngine"
 license=('MIT OR Apache-2.0')
-# The GUI libraries are loaded with dlopen at startup rather than linked, so
-# namcap reports them as "may not be needed". They are needed.
-depends=('glibc' 'libgcc' 'hicolor-icon-theme' 'libglvnd' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi')
-makedepends=('cargo')
-optdepends=('plasma5support: the QuantumEngine Plasma widget'
+# The window is a Tauri app on the system WebKitGTK. The background service
+# (tray icon, headset, EQ, updates) needs none of that: it only speaks D-Bus.
+depends=('glibc' 'libgcc' 'hicolor-icon-theme' 'webkit2gtk-4.1' 'gtk3' 'curl')
+makedepends=('cargo' 'npm')
+optdepends=('pipewire: the equalizer'
+            'wireplumber: the equalizer (0.5 or newer)'
+            'pipewire-audio: virtual 7.1 surround (with libmysofa)'
+            'polkit: installing updates from the app'
+            'plasma5support: the QuantumEngine Plasma widget'
             'plasma-workspace: the QuantumEngine Plasma widget')
+# The release binaries carry no debug info worth a separate package, and the
+# in-app updater must only ever find the one package in a release.
+options=('!debug')
 # The app lives in the quantum-linux/ subdirectory of the QuantumEngine repo,
 # alongside research material that isn't part of this package.
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('8796e64775b13d8f1571e8552404b1810ca40e9fa9ee715229418e505e58e325')
+# The release workflow (.github/workflows/release.yml) fills this in with
+# updpkgsums and attaches that PKGBUILD to the GitHub release; use that copy
+# for the AUR.
+sha256sums=('SKIP')
 
 _srcdir=QuantumEngine-$pkgver/quantum-linux
 
@@ -23,13 +33,17 @@ prepare() {
   cd "$_srcdir"
   export RUSTUP_TOOLCHAIN=stable
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+  npm --prefix ui ci --no-audit --no-fund
 }
 
 build() {
   cd "$_srcdir"
+  # The window's interface (Vue), built into ui/dist and embedded in the
+  # quantumengine binary below.
+  npm --prefix ui run build
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
-  cargo build --frozen --release --workspace
+  cargo build --frozen --release --workspace --features quantumengine/custom-protocol
 }
 
 check() {
@@ -42,6 +56,7 @@ package() {
   cd "$_srcdir"
   install -Dm755 target/release/quantumenginectl -t "$pkgdir/usr/bin/"
   install -Dm755 target/release/quantumengine -t "$pkgdir/usr/bin/"
+  install -Dm755 target/release/quantumengined -t "$pkgdir/usr/bin/"
   install -Dm644 packaging/quantumengine.desktop -t "$pkgdir/usr/share/applications/"
   # Starts the tray icon and headset service at login; users can switch it
   # off in their desktop's autostart settings.

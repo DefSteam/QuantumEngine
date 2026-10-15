@@ -1,4 +1,4 @@
-//! The D-Bus service `quantumengine --tray` runs. See `quantumengine-dbus`
+//! The D-Bus service `quantumengined` runs. See `quantumengine-dbus`
 //! for the interface contract this implements.
 //!
 //! [`HeadsetIface`] never touches the headset directly: property getters
@@ -9,6 +9,9 @@
 //! the one thread that is allowed to talk to the dongle.
 
 use crate::device::{self, Link, Shared};
+use crate::eq::{self, profiles::Correction};
+use crate::surround;
+use crate::update;
 use jbl_quantum::{Anc, Colour, Effect, Sidetone, Zone, ZoneLighting, MAX_SLOTS};
 use quantumengine_dbus::ZoneLightingArg;
 use std::sync::mpsc::{self, Sender};
@@ -18,6 +21,9 @@ use zbus::interface;
 pub struct HeadsetIface {
     shared: Shared,
     commands: Sender<device::Command>,
+    eq: eq::Handle,
+    surround: surround::Handle,
+    updater: update::Handle,
 }
 
 #[interface(name = "org.quantumengine.Headset1")]
@@ -116,6 +122,123 @@ impl HeadsetIface {
         self.dispatch(device::Command::Lighting(zones, reply))?;
         recv(rx)
     }
+
+    #[zbus(property)]
+    fn eq_enabled(&self) -> bool {
+        self.eq.state().enabled
+    }
+
+    #[zbus(property)]
+    fn eq_profile(&self) -> String {
+        self.eq.state().profile.to_string()
+    }
+
+    #[zbus(property)]
+    fn eq_profiles(&self) -> Vec<String> {
+        eq::profiles::PROFILES.iter().map(|p| p.name.to_string()).collect()
+    }
+
+    #[zbus(property)]
+    fn eq_correction(&self) -> String {
+        self.eq.state().correction.as_str().to_string()
+    }
+
+    #[zbus(property)]
+    fn eq_status(&self) -> String {
+        self.eq.state().status
+    }
+
+    fn set_eq_enabled(&self, enabled: bool) -> fdo::Result<bool> {
+        self.eq.call(|r| eq::Command::Enable(enabled, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn set_eq_profile(&self, name: &str) -> fdo::Result<String> {
+        if eq::profiles::find(name).is_none() {
+            return Err(fdo::Error::InvalidArgs(format!("unknown EQ profile '{name}'")));
+        }
+        let name = name.to_string();
+        self.eq.call(|r| eq::Command::Profile(name, r)).map(str::to_string).map_err(fdo::Error::Failed)
+    }
+
+    fn eq_response(&self, profile: &str, correction: &str) -> fdo::Result<Vec<f64>> {
+        let p = eq::profiles::find(profile)
+            .ok_or_else(|| fdo::Error::InvalidArgs(format!("unknown EQ profile '{profile}'")))?;
+        let c = parse_correction(correction)?;
+        let freqs = (0..quantumengine_dbus::EQ_RESPONSE_POINTS).map(quantumengine_dbus::eq_response_freq);
+        Ok(eq::response(c, p, freqs))
+    }
+
+    #[zbus(property)]
+    fn surround_enabled(&self) -> bool {
+        self.surround.state().enabled
+    }
+
+    #[zbus(property)]
+    fn surround_status(&self) -> String {
+        self.surround.state().status
+    }
+
+    fn set_surround_enabled(&self, enabled: bool) -> fdo::Result<bool> {
+        self.surround.call(|r| surround::Command::Enable(enabled, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn set_eq_correction(&self, correction: &str) -> fdo::Result<String> {
+        let c = parse_correction(correction)?;
+        self.eq
+            .call(|r| eq::Command::Correction(c, r))
+            .map(|c| c.as_str().to_string())
+            .map_err(fdo::Error::Failed)
+    }
+
+    #[zbus(property)]
+    fn version(&self) -> String {
+        update::VERSION.to_string()
+    }
+
+    #[zbus(property)]
+    fn update_version(&self) -> String {
+        self.updater.state().available.map(|r| r.version).unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    fn update_url(&self) -> String {
+        self.updater.state().available.map(|r| r.url).unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    fn update_can_install(&self) -> bool {
+        self.updater.state().can_install()
+    }
+
+    #[zbus(property)]
+    fn update_status(&self) -> String {
+        self.updater.state().status
+    }
+
+    #[zbus(property)]
+    fn update_busy(&self) -> bool {
+        self.updater.state().busy
+    }
+
+    #[zbus(property)]
+    fn update_checks(&self) -> bool {
+        self.updater.state().checks_enabled
+    }
+
+    fn check_for_updates(&self) -> fdo::Result<String> {
+        self.updater
+            .call(update::Command::Check)
+            .map(Option::unwrap_or_default)
+            .map_err(fdo::Error::Failed)
+    }
+
+    fn install_update(&self) -> fdo::Result<()> {
+        self.updater.call(update::Command::Install).map_err(fdo::Error::Failed)
+    }
+
+    fn set_update_checks(&self, enabled: bool) -> fdo::Result<bool> {
+        self.updater.call(|r| update::Command::SetChecks(enabled, r)).map_err(fdo::Error::Failed)
+    }
 }
 
 impl HeadsetIface {
@@ -194,41 +317,50 @@ fn link_str(link: &Link) -> String {
     .to_string()
 }
 
-/// Claims [`quantumengine_dbus::BUS_NAME`] on the session bus and serves the
-/// interface at [`quantumengine_dbus::OBJECT_PATH`], reading from `shared`
-/// and sending to `commands` — both already set up by the caller, which owns
-/// the one worker thread that actually drains `commands` and keeps `shared`
-/// current (see `main::run_tray`).
+/// Claims [`quantumengine_dbus::BUS_NAME`] on the session bus.
 ///
-/// Returns `None` when another `--tray` already owns the name. The claim is
+/// Returns `None` when another service already owns the name. The claim is
 /// made without replacement on purpose: zbus's default flags would let a
 /// second instance take the name over and leave the first running as a
-/// duplicate tray icon that still holds the dongle open. The caller must
-/// then exit before it starts a tray icon or touches the headset.
+/// duplicate tray icon that still holds the dongle open. The caller must then
+/// exit before it starts anything else — a tray icon, the EQ filter, or the
+/// headset worker.
 ///
-/// Otherwise returns the connection, which must be kept alive for as long as
-/// the service should keep running (dropping it releases the bus name), and a
-/// callback the caller must invoke every time `shared` changes. That callback
-/// emits a `PropertiesChanged` for every property — a broad brush rather than
-/// diffing field by field, but changes only happen on user action or a
-/// physical control, so the traffic this produces is small.
-pub fn serve(
-    shared: Shared,
-    commands: Sender<device::Command>,
-) -> zbus::Result<Option<(zbus::blocking::Connection, impl Fn())>> {
-    let connection = zbus::blocking::connection::Builder::session()?
-        .serve_at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands })?
-        .build()?;
-
+/// The connection must be kept alive for as long as the service runs;
+/// dropping it releases the name.
+pub fn claim() -> zbus::Result<Option<zbus::blocking::Connection>> {
+    let connection = zbus::blocking::Connection::session()?;
     match connection.request_name_with_flags(
         quantumengine_dbus::BUS_NAME,
         fdo::RequestNameFlags::DoNotQueue.into(),
     ) {
-        Ok(fdo::RequestNameReply::PrimaryOwner | fdo::RequestNameReply::AlreadyOwner) => {}
+        Ok(fdo::RequestNameReply::PrimaryOwner | fdo::RequestNameReply::AlreadyOwner) => Ok(Some(connection)),
         // zbus reports a taken name as an error rather than an `Exists` reply.
-        Ok(_) | Err(zbus::Error::NameTaken) => return Ok(None),
-        Err(e) => return Err(e),
+        Ok(_) | Err(zbus::Error::NameTaken) => Ok(None),
+        Err(e) => Err(e),
     }
+}
+
+/// Serves the interface at [`quantumengine_dbus::OBJECT_PATH`] on a
+/// connection from [`claim`], reading from `shared`, `eq` and `updater` and
+/// sending to their command channels — all set up by the caller, which owns
+/// the threads that drain them (see `main::run_tray`).
+///
+/// Returns a callback the caller must invoke whenever anything the interface
+/// exposes changes. It emits a `PropertiesChanged` for every property — a
+/// broad brush rather than diffing field by field, but changes only happen on
+/// user action, a physical control or the updater, so the traffic is small.
+pub fn serve(
+    connection: &zbus::blocking::Connection,
+    shared: Shared,
+    commands: Sender<device::Command>,
+    eq: eq::Handle,
+    surround: surround::Handle,
+    updater: update::Handle,
+) -> zbus::Result<impl Fn() + Send + Sync + use<>> {
+    connection
+        .object_server()
+        .at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands, eq, surround, updater })?;
 
     let iface_ref = connection
         .object_server()
@@ -253,12 +385,29 @@ pub fn serve(
             zbus::block_on(iface.firmware_changed(emitter)),
             zbus::block_on(iface.busy_changed(emitter)),
             zbus::block_on(iface.last_error_changed(emitter)),
+            zbus::block_on(iface.eq_enabled_changed(emitter)),
+            zbus::block_on(iface.eq_profile_changed(emitter)),
+            zbus::block_on(iface.eq_correction_changed(emitter)),
+            zbus::block_on(iface.eq_status_changed(emitter)),
+            zbus::block_on(iface.surround_enabled_changed(emitter)),
+            zbus::block_on(iface.surround_status_changed(emitter)),
+            zbus::block_on(iface.update_version_changed(emitter)),
+            zbus::block_on(iface.update_url_changed(emitter)),
+            zbus::block_on(iface.update_can_install_changed(emitter)),
+            zbus::block_on(iface.update_status_changed(emitter)),
+            zbus::block_on(iface.update_busy_changed(emitter)),
+            zbus::block_on(iface.update_checks_changed(emitter)),
         ] {
             if let Err(e) = result {
-                eprintln!("quantumengine: failed to emit a property change: {e}");
+                eprintln!("quantumengined: failed to emit a property change: {e}");
             }
         }
     };
 
-    Ok(Some((connection, notify_changed)))
+    Ok(notify_changed)
+}
+
+fn parse_correction(s: &str) -> fdo::Result<Correction> {
+    Correction::parse(s)
+        .ok_or_else(|| fdo::Error::InvalidArgs(format!("unknown correction '{s}' (want off, stereo or surround)")))
 }

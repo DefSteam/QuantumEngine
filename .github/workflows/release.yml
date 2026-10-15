@@ -1,0 +1,67 @@
+# Builds the Arch package for a version tag and publishes it as a GitHub
+# release. The QuantumEngine tray service checks these releases for updates
+# and installs the attached package, so every release needs:
+#   quantumengine-<version>-<rel>-x86_64.pkg.tar.zst
+#   quantumengine-<version>-<rel>-x86_64.pkg.tar.zst.sha256
+# The PKGBUILD with the source checksum filled in is attached too, ready for
+# the AUR.
+#
+# To release: run quantum-linux/scripts/bump-version.sh, commit, then
+#   git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git github-cli pacman-contrib
+
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cd quantum-linux
+          grep -qx "pkgver=$version" packaging/PKGBUILD || { echo "::error::PKGBUILD pkgver is not $version"; exit 1; }
+          grep -qx "version = \"$version\"" Cargo.toml || { echo "::error::Cargo.toml version is not $version"; exit 1; }
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          source quantum-linux/packaging/PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}" "${makedepends[@]}"
+
+      # makepkg refuses to run as root.
+      - name: Build the package
+        shell: bash
+        run: |
+          useradd --create-home builder
+          install -d -o builder /home/builder/pkg
+          install -o builder -m644 quantum-linux/packaging/PKGBUILD /home/builder/pkg/
+          cd /home/builder/pkg
+          sudo -u builder updpkgsums
+          sudo -u builder makepkg --noconfirm
+          for f in *.pkg.tar.zst; do sha256sum "$f" > "$f.sha256"; done
+          ls -l
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd /home/builder/pkg
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "QuantumEngine ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            ./*.pkg.tar.zst ./*.pkg.tar.zst.sha256 PKGBUILD

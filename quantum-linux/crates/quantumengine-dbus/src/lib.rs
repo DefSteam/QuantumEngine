@@ -1,4 +1,4 @@
-//! The D-Bus contract between `quantumengine --tray` (the only process that
+//! The D-Bus contract between `quantumengined` (the only process that
 //! ever talks to the headset) and every other QuantumEngine client — the
 //! window, `quantumenginectl`, and the Plasma widget.
 //!
@@ -21,7 +21,10 @@
 //! * `Anc`: `"off"` | `"on"` | `"talkthru"`.
 //! * `Sidetone`: `"off"` | `"low"` | `"mid"` | `"high"`.
 //!
-//! The `Set*` methods block until the headset confirms the change (as
+//! The EQ, surround and update members don't involve the headset at all; they are on
+//! the same object so a client needs only one proxy.
+//!
+//! The headset `Set*` methods block until the headset confirms the change (as
 //! `jbl_quantum::Headset`'s own `set_*_confirmed` calls do) and fail with
 //! `org.freedesktop.DBus.Error.Failed` if it doesn't. Only one command runs
 //! at a time — the service serialises every caller through the same worker
@@ -32,10 +35,21 @@ use serde::{Deserialize, Serialize};
 use zbus::proxy;
 use zbus::zvariant::Type;
 
-/// The well-known bus name `quantumengine --tray` claims on the session bus.
+/// The well-known bus name `quantumengined` claims on the session bus.
 pub const BUS_NAME: &str = "org.quantumengine.Headset1";
 /// The single object every call and property lives on.
 pub const OBJECT_PATH: &str = "/org/quantumengine/Headset1";
+
+/// How many points [`HeadsetProxy::eq_response`] returns.
+pub const EQ_RESPONSE_POINTS: usize = 64;
+
+/// The frequency, in Hz, of point `i` of [`HeadsetProxy::eq_response`]: the
+/// points are spaced evenly on a log scale from 20 Hz to 20 kHz, both
+/// included.
+pub fn eq_response_freq(i: usize) -> f64 {
+    let t = i as f64 / (EQ_RESPONSE_POINTS - 1) as f64;
+    20.0 * 1000f64.powf(t)
+}
 
 /// One lighting zone, for [`HeadsetProxy::set_lighting`]. Mirrors
 /// `jbl_quantum::ZoneLighting`, but this crate never depends on that crate —
@@ -130,4 +144,93 @@ pub trait Headset {
     /// as `jbl_quantum::Headset::set_lighting_zones` does — including the
     /// off/settle/on cycle that takes a few hundred milliseconds.
     fn set_lighting(&self, zones: Vec<ZoneLightingArg>) -> zbus::Result<()>;
+
+    // Equalizer. Applied on the PC to the headset's game output by a PipeWire
+    // filter; works whether or not the headset is connected right now.
+
+    #[zbus(property)]
+    fn eq_enabled(&self) -> zbus::Result<bool>;
+
+    /// The sound profile's name, one of [`eq_profiles`](Self::eq_profiles).
+    #[zbus(property)]
+    fn eq_profile(&self) -> zbus::Result<String>;
+
+    /// Every built-in profile name, in display order, `"Flat"` first.
+    #[zbus(property)]
+    fn eq_profiles(&self) -> zbus::Result<Vec<String>>;
+
+    /// JBL's headset correction under the profile: `"off"` | `"stereo"` |
+    /// `"surround"`.
+    #[zbus(property)]
+    fn eq_correction(&self) -> zbus::Result<String>;
+
+    /// Why the EQ isn't working, or empty when it is (or is off).
+    #[zbus(property)]
+    fn eq_status(&self) -> zbus::Result<String>;
+
+    fn set_eq_enabled(&self, enabled: bool) -> zbus::Result<bool>;
+
+    /// Selects a profile by name, ignoring case and punctuation. Returns the
+    /// profile's display name.
+    fn set_eq_profile(&self, name: &str) -> zbus::Result<String>;
+
+    fn set_eq_correction(&self, correction: &str) -> zbus::Result<String>;
+
+    /// The gain, in dB, that `profile` under `correction` applies at each of
+    /// the [`EQ_RESPONSE_POINTS`] frequencies [`eq_response_freq`] gives, for
+    /// drawing the curve. It is the curve's shape: the overall turn-down that
+    /// keeps a boosting curve from clipping is left out.
+    fn eq_response(&self, profile: &str, correction: &str) -> zbus::Result<Vec<f64>>;
+
+    // Virtual 7.1 surround: a PipeWire sink that renders eight channels
+    // binaurally for the headset. Turning it on makes it the default output.
+
+    #[zbus(property)]
+    fn surround_enabled(&self) -> zbus::Result<bool>;
+
+    /// Why surround isn't working (e.g. the dongle is unplugged), or empty.
+    #[zbus(property)]
+    fn surround_status(&self) -> zbus::Result<String>;
+
+    fn set_surround_enabled(&self, enabled: bool) -> zbus::Result<bool>;
+
+    // Updates from GitHub releases.
+
+    /// The running service's version, e.g. `0.3.0`.
+    #[zbus(property)]
+    fn version(&self) -> zbus::Result<String>;
+
+    /// A newer release's version, or empty.
+    #[zbus(property)]
+    fn update_version(&self) -> zbus::Result<String>;
+
+    /// The newer release's web page, or empty.
+    #[zbus(property)]
+    fn update_url(&self) -> zbus::Result<String>;
+
+    /// Whether [`install_update`](Self::install_update) can install it: this
+    /// copy came from the pacman package and the release has one to install.
+    #[zbus(property)]
+    fn update_can_install(&self) -> zbus::Result<bool>;
+
+    /// What the updater is doing or last failed at, for showing as-is.
+    #[zbus(property)]
+    fn update_status(&self) -> zbus::Result<String>;
+
+    #[zbus(property)]
+    fn update_busy(&self) -> zbus::Result<bool>;
+
+    /// Whether the service checks for a new release once a day.
+    #[zbus(property)]
+    fn update_checks(&self) -> zbus::Result<bool>;
+
+    /// Checks now. Returns the newer version, or empty when up to date.
+    fn check_for_updates(&self) -> zbus::Result<String>;
+
+    /// Starts installing the available update and returns at once; watch
+    /// `UpdateStatus`. Shows a password prompt. On success the service
+    /// restarts itself, so clients briefly lose it and reconnect.
+    fn install_update(&self) -> zbus::Result<()>;
+
+    fn set_update_checks(&self, enabled: bool) -> zbus::Result<bool>;
 }

@@ -2,7 +2,7 @@
 Type=Application
 Name=QuantumEngine (tray)
 Comment=Headset tray icon and the background service the window, widget and CLI talk to
-Exec=quantumengine --tray
+Exec=quantumengined
 Icon=quantumengine
 Terminal=false
 NoDisplay=true

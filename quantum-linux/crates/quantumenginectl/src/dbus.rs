@@ -1,4 +1,4 @@
-//! Connects `quantumenginectl` to the `quantumengine --tray` service over
+//! Connects `quantumenginectl` to the `quantumengined` service over
 //! D-Bus, starting it if it is not already running. Like the window and the
 //! tray icon, this CLI never opens the headset itself — see
 //! `quantumengine-dbus` for the shared contract.
@@ -6,7 +6,7 @@
 use quantumengine_dbus::HeadsetProxyBlocking;
 use std::time::{Duration, Instant};
 
-/// How long to wait for a `quantumengine --tray` this module started itself
+/// How long to wait for a `quantumengined` this module started itself
 /// to claim the bus name.
 const SERVICE_START_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -22,7 +22,7 @@ pub fn connect() -> Result<HeadsetProxyBlocking<'static>, String> {
         let deadline = Instant::now() + SERVICE_START_TIMEOUT;
         while !bus.name_has_owner(name()).unwrap_or(false) {
             if Instant::now() >= deadline {
-                return Err("quantumengine --tray did not start in time".into());
+                return Err("quantumengined did not start in time".into());
             }
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -35,7 +35,7 @@ pub fn connect() -> Result<HeadsetProxyBlocking<'static>, String> {
         .map_err(|e| format!("cannot reach the headset service: {e}"))
 }
 
-/// Starts `quantumengine --tray`, found next to this executable — a dev
+/// Starts `quantumengined`, found next to this executable — a dev
 /// build and the packaged install both put both binaries in the same
 /// directory.
 ///
@@ -46,9 +46,8 @@ pub fn connect() -> Result<HeadsetProxyBlocking<'static>, String> {
 /// process that has no reason to exit.
 fn start_service() -> Result<(), String> {
     let mut exe = std::env::current_exe().map_err(|e| format!("cannot find my own executable: {e}"))?;
-    exe.set_file_name("quantumengine");
+    exe.set_file_name("quantumengined");
     std::process::Command::new(&exe)
-        .arg("--tray")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

@@ -1,1 +1,9 @@
 /target
+# Written by tauri-build on every build.
+/crates/quantumengine/gen/
+# Impeccable (design tooling) working files; the surface briefs and
+# DESIGN.md are the parts worth keeping.
+/.impeccable/config.local.json
+/.impeccable/questions/
+/.impeccable/review/
+/.impeccable/build/

@@ -5,12 +5,13 @@
 # QuantumEngine
 
 Control a **JBL Quantum 810 Wireless** headset on Linux: noise cancelling,
-TalkThru, sidetone and lighting. There's a desktop app and a command-line tool,
-and no Windows or vendor software is needed.
+TalkThru, sidetone, lighting and EQ. There's a desktop app, a tray icon, a
+Plasma widget and a command-line tool, and no Windows or vendor software is
+needed.
 
-It talks to the USB dongle (`0ecb:2069`) directly and needs no background
-service. The protocol was reverse-engineered from the device and every command
-was checked on real hardware.
+A small background service talks to the USB dongle (`0ecb:2069`) directly;
+everything else talks to the service. The protocol was reverse-engineered from
+the device and every command was checked on real hardware.
 
 ## Features
 
@@ -24,11 +25,14 @@ was checked on real hardware.
 | Microphone live/muted, game/chat dial | ✓ (live) | ✓ |
 | Live event stream | — | ✓ `watch` |
 | Serial, firmware, paired host name | ✓ | ✓ |
+| EQ: JBL's headset tuning and 19 sound profiles | ✓ | ✓ |
+| Virtual 7.1 surround | ✓ | ✓ |
+| Updates from GitHub releases | ✓ | ✓ |
 
 **Not available:** these settings aren't exposed over the dongle, or haven't
 been found yet.
-- EQ
-- Spatial sound
+- Spatial sound on the headset itself (QuantumEngine renders
+  [virtual surround](#virtual-surround) on the PC instead, as JBL's app does)
 - Auto-off timer
 - Charging state
 - Volume
@@ -42,22 +46,35 @@ different protocol, so the tools refuse to talk to them.
 
 ### Arch / CachyOS / Manjaro
 
+Download the `.pkg.tar.zst` from the
+[latest release](https://github.com/sidmax7/QuantumEngine/releases/latest) and
+install it:
+
+```sh
+sudo pacman -U quantumengine-*-x86_64.pkg.tar.zst
+```
+
+Or build it yourself (run `makepkg` as your normal user, not with `sudo`):
+
 ```sh
 cd packaging
 makepkg -si
 ```
 
 The package installs the udev rule for you. Unplug the dongle and plug it back
-in afterwards.
+in afterwards. Once installed, the app updates itself (see [Updates](#updates)).
 
 ### Anywhere else
 
-You need a Rust toolchain (1.88 or newer) and the usual GUI libraries (OpenGL,
-xkbcommon, and Wayland or X11).
+You need a Rust toolchain (1.88 or newer), Node.js with npm, and WebKitGTK 4.1
+(`webkit2gtk-4.1` on Arch, `libwebkit2gtk-4.1-dev` on Debian and Ubuntu).
 
 ```sh
-cargo install --path crates/quantumenginectl
-cargo install --path crates/quantumengine
+npm --prefix ui ci
+npm --prefix ui run build
+cargo build --release --workspace --features quantumengine/custom-protocol
+sudo install -Dm755 target/release/quantumengine target/release/quantumengined \
+  target/release/quantumenginectl -t /usr/local/bin/
 
 sudo install -Dm644 udev/70-jbl-quantum.rules /etc/udev/rules.d/70-jbl-quantum.rules
 sudo udevadm control --reload
@@ -65,8 +82,8 @@ sudo udevadm control --reload
 
 Then replug the dongle. To get a menu entry, copy
 `packaging/quantumengine.desktop` to `~/.local/share/applications/`. To start
-the tray at login, copy `packaging/quantumengine-tray.desktop` to
-`~/.config/autostart/`. For the Plasma widget:
+the background service at login, copy `packaging/quantumengine-tray.desktop`
+to `~/.config/autostart/`. For the Plasma widget:
 
 ```sh
 kpackagetool6 --type Plasma/Applet --install packaging/plasmoid/org.quantumengine.plasmoid
@@ -79,25 +96,27 @@ tools report a permission error.
 
 Run `quantumengine`, or use **QuantumEngine** in your app menu.
 
-The window follows the headset live. Pressing the ANC button, moving the
-game/chat dial or muting the microphone updates it straight away. While a change
-is being applied, the controls are locked until the headset confirms it.
+The window is built around a drawing of the headset that shows its state:
+noise control, lights, the microphone and the game/chat dial, with the
+battery above it. It follows the headset live, so pressing the ANC button,
+moving the dial or muting the microphone shows up straight away. Below the
+drawing are four sections: Sound, Lights, EQ and Device. While a change is
+being applied, the controls are locked until the headset confirms it.
 
 The headset can't report its lighting colours, so the app remembers what you
-last applied. Applying lighting switches the lights on, because the headset only
-takes new colours at that moment.
+last applied. While you edit them, the drawing previews the colours and
+effect; nothing reaches the headset until you press **Apply to headset**,
+which also switches the lights on.
 
-Only one process ever opens the dongle: `quantumengine --tray` (below). The
-window, the CLI and the Plasma widget all talk to it instead, so running
-several of them at once is never several clients fighting over the headset.
+## Background service and tray
 
-## System tray
-
-`quantumengine --tray` runs in the background, owns the headset, and shows a
-tray icon: left-click opens the window, and the menu has noise control,
-sidetone and a lights toggle without opening it. It's the piece that starts
-first — the window, `quantumenginectl` and the widget all start it themselves
-if it isn't already running.
+`quantumengined` runs in the background. It is the only program that opens
+the dongle, and it also runs the EQ, checks for updates and shows a tray
+icon: left-click opens the window, and the menu has noise control, sidetone,
+the lights and the EQ without opening it. The window, `quantumenginectl` and
+the widget all talk to it over D-Bus and start it if it isn't running, so
+running several of them at once never means several programs fighting over
+the headset. (It used to be `quantumengine --tray`, which still starts it.)
 
 The package starts it automatically at login. To stop that, disable
 "QuantumEngine (tray)" in your desktop's autostart settings.
@@ -105,8 +124,72 @@ The package starts it automatically at login. To stop that, disable
 ## Plasma widget
 
 On KDE Plasma, add **QuantumEngine** from *Add Widgets…* for battery, noise
-control and lights on the panel or desktop, without opening the window. It
-needs the `plasma5support` package, which most Plasma installs already have.
+control, lights and the EQ on the panel or desktop, without opening the
+window. It needs the `plasma5support` package, which most Plasma installs
+already have.
+
+## Equalizer
+
+The headset has no EQ of its own; JBL's QuantumENGINE applies it on the PC,
+and so does this. Turn it on in the window, the tray menu, the widget or with
+`quantumenginectl eq on`. It has two layers:
+
+- **Headset tuning**: JBL's own correction curve for the Quantum 810. *JBL
+  stereo* is the one QuantumENGINE uses with surround off (a gentle bass cut);
+  *JBL surround* is the one it puts under its spatial audio.
+- **Profile**: one of 19 ten-band sound profiles: Flat, Bass Boost,
+  Cinematic, FPS, MOBA, RPG, and presets for specific games (CS2, Valorant,
+  Apex Legends and more).
+
+It runs as a PipeWire filter in front of the headset's **game** output only;
+chat is left alone. Your default output device doesn't change, and it works
+whether or not the headset is plugged in at the moment. Switching profiles is
+instant, with no gap in the audio. Curves that boost are turned down by just
+enough that they can never clip. It needs PipeWire and WirePlumber 0.5 or
+newer, which current desktops already use.
+
+If EasyEffects is also processing your output, the sound is equalized twice;
+use one or the other.
+
+The curves come from JBL QuantumENGINE's configuration files, as extracted by
+[alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
+tested by [DefSteam](https://github.com/DefSteam). Thank you both.
+
+## Virtual surround
+
+On Windows, you set the headset to 7.1 in the sound settings and JBL's
+software turns the eight channels into 3D sound for headphones. QuantumEngine
+does the same with PipeWire. Switch on **Virtual surround 7.1** (in the
+window's Sound section, the tray menu, or `quantumenginectl surround on`) and
+it adds a 7.1 output called "QuantumEngine Surround 7.1" and makes it your
+default. Each channel is placed where its speaker would be (front ±30°, sides
+±90°, rear ±150°) using a measured head model, MIT's KEMAR dummy head, which
+libmysofa ships, and mixed down for the headset's game output. The EQ still
+applies on top. Switching it off makes the headset the default again.
+
+Games then see a 7.1 device: pick 7.1 or surround in their audio settings
+where they offer it. Stereo sound is spread across the virtual speakers by
+PipeWire's own upmixing, mostly from the front with some ambience around you.
+JBL's surround tuning (in the EQ) is the curve JBL uses with this.
+
+It needs PipeWire's spatializer, which comes with `pipewire-audio`, and
+libmysofa. It won't sound exactly like JBL's own processing, which isn't
+available outside their app.
+
+## Updates
+
+Once a day the tray service asks GitHub whether there's a newer release, and
+shows a notification when there is. If you installed the package, **Install**
+(in the notification, the window, the tray menu or the widget, or
+`quantumenginectl update install`) downloads it, checks it against the
+release's checksum, and installs it with pacman after asking for your
+password. The service then restarts on the new version.
+
+That daily check is the app's only network traffic. Switch it off in the
+window under *About and updates*, or with `quantumenginectl update checks off`.
+The checksum guards against a broken download, not against a compromised
+GitHub account; it trusts this repository exactly as much as building it with
+`makepkg` does.
 
 ## Command line
 
@@ -121,9 +204,16 @@ lights:    off
 paired to: PC-myhost #1
 serial:    XXXXXX-XXXXXXXXX
 firmware:  0.7.2, 0.8.2, 1.0.2, 0.7.2
+eq:        on, CS2 (headset tuning: stereo)
 
 $ quantumenginectl anc talkthru
 talkthru
+
+$ quantumenginectl eq bass boost
+on, Bass Boost (headset tuning: stereo)
+
+$ quantumenginectl update
+QuantumEngine 0.3.0 is up to date
 
 $ quantumenginectl rgb both chase '#ff0000' '#0000ff' --brightness 60
 applied
@@ -165,6 +255,39 @@ earcups always show the same thing.
   but the headset is off or out of range. Switch it off and on again.
 - **Occasional "Connection timed out"**: the wireless link is weak or dropping.
   Try again, and avoid running several tools against the headset at once.
+
+## Working on the window
+
+The window is a [Tauri](https://tauri.app) app: a small Rust shell in
+`crates/quantumengine` and a Vue interface in `ui/`. To work on the interface
+with made-up data and no headset, run the Vite dev server and open it in a
+browser:
+
+```sh
+npm --prefix ui ci
+npm --prefix ui run dev     # http://localhost:1420/?scenario=ready
+```
+
+Other scenarios are `update`, `low`, `off`, `nodongle`, `noaccess` and
+`down`. Add `&section=lights`, `eq` or `device` to open another section. To
+run the real window against the dev server, leave that running and use
+`cargo run -p quantumengine` (debug builds load the dev server).
+
+The TypeScript bindings in `ui/src/bindings.ts` are generated from the Rust
+commands. After changing those, regenerate them with
+`QUANTUMENGINE_UPDATE_BINDINGS=1 cargo test -p quantumengine`.
+
+## Releasing
+
+1. `scripts/bump-version.sh X.Y.Z` sets the version in `Cargo.toml`,
+   `Cargo.lock`, the PKGBUILD and the widget.
+2. Commit, then `git tag -a vX.Y.Z -m "vX.Y.Z" && git push --follow-tags`.
+
+Pushing the tag runs `.github/workflows/release.yml`, which builds the package
+on Arch, runs the tests, and publishes a GitHub release with the package, its
+`.sha256`, and a PKGBUILD with the source checksum filled in (that copy is the
+one for the AUR). Installed copies pick the release up within a day. Every
+push to `master` is also linted and tested by `.github/workflows/check.yml`.
 
 ## Library
 

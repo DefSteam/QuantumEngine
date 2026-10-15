@@ -1,0 +1,402 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T20:57:03+00:00",
+  "title": "Design System: QuantumEngine",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Graphite Ground",
+        "canonical": "oklch(16.9% 0.006 271)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#232427",
+          "#3e4043",
+          "#5c5d61",
+          "#7c7d81",
+          "#9d9ea2",
+          "#c2c4c8",
+          "#edeef3"
+        ]
+      },
+      "film": {
+        "role": "neutral",
+        "displayName": "Drafting Film",
+        "canonical": "oklch(20.4% 0.009 264)",
+        "tonalRamp": [
+          "#090b0f",
+          "#222428",
+          "#3d4044",
+          "#5b5e63",
+          "#7b7d82",
+          "#9c9ea4",
+          "#c1c4ca",
+          "#eceef4"
+        ]
+      },
+      "film-raised": {
+        "role": "neutral",
+        "displayName": "Raised Film",
+        "canonical": "oklch(23.4% 0.011 261)",
+        "tonalRamp": [
+          "#090b10",
+          "#212429",
+          "#3d4046",
+          "#5a5e64",
+          "#7a7d84",
+          "#9b9fa5",
+          "#c0c4cb",
+          "#eaeff6"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(30.0% 0.014 262)",
+        "tonalRamp": [
+          "#080b11",
+          "#20242b",
+          "#3c4047",
+          "#595e66",
+          "#797d86",
+          "#9a9fa7",
+          "#bfc4cd",
+          "#e9eff8"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "oklch(37.8% 0.017 262)",
+        "tonalRamp": [
+          "#070b12",
+          "#20242c",
+          "#3b4049",
+          "#585e67",
+          "#787d88",
+          "#999fa9",
+          "#bec4cf",
+          "#e8effa"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(93.2% 0.010 82)",
+        "tonalRamp": [
+          "#0d0b07",
+          "#27241e",
+          "#423f3a",
+          "#615d57",
+          "#807d76",
+          "#a29e97",
+          "#c7c4bd",
+          "#f2eee7"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "oklch(76.6% 0.010 267)",
+        "tonalRamp": [
+          "#090b10",
+          "#222429",
+          "#3d4045",
+          "#5b5e64",
+          "#7a7d84",
+          "#9b9ea5",
+          "#c1c4cb",
+          "#ebeef6"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "oklch(63.6% 0.015 262)",
+        "tonalRamp": [
+          "#080b11",
+          "#20242b",
+          "#3c4048",
+          "#595e66",
+          "#797d86",
+          "#999fa8",
+          "#bfc4ce",
+          "#e9eff9"
+        ]
+      },
+      "violet": {
+        "role": "primary",
+        "displayName": "Logo Violet",
+        "canonical": "oklch(65.8% 0.212 298)",
+        "tonalRamp": [
+          "#210056",
+          "#380079",
+          "#53009d",
+          "#702fc2",
+          "#9055e7",
+          "#b179ff",
+          "#d7a0ff",
+          "#ffcbff"
+        ]
+      },
+      "violet-soft": {
+        "role": "primary",
+        "displayName": "Violet Wash",
+        "canonical": "rgb(164 107 255 / 0.16)"
+      },
+      "alert": {
+        "role": "secondary",
+        "displayName": "Signal Coral",
+        "canonical": "oklch(73.4% 0.163 30)",
+        "tonalRamp": [
+          "#370000",
+          "#5c0000",
+          "#810000",
+          "#a6291c",
+          "#cc4e3e",
+          "#f3715f",
+          "#ff9883",
+          "#ffc2ac"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The battery percentage only; clamp(56px, 9vh, 84px) in a narrow window with height to spare."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "The live value in each Fig. 1 callout."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Field headings, status title, selected tab, update headline."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text; buttons at 500 or 600."
+      },
+      "detail": {
+        "displayName": "Detail",
+        "purpose": "Row readings, list terms and values, inline errors, toast messages."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Hints, status detail, callout part names, captions, group names, credits."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 10px 30px -8px rgb(0 0 0 / 0.6)",
+        "purpose": "Toasts only, floating above the window's content."
+      },
+      {
+        "name": "live-halo",
+        "value": "0 0 0 3px rgb(236 232 225 / 0.12)",
+        "purpose": "The connected status dot."
+      },
+      {
+        "name": "pending-ring",
+        "value": "0 0 0 3px var(--violet)",
+        "purpose": "A switch knob waiting for the headset to confirm; pulses to 1px."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Default easing for every transition."
+      },
+      {
+        "name": "state",
+        "value": "160ms-200ms",
+        "purpose": "Colour, border and background changes on controls."
+      },
+      {
+        "name": "knob",
+        "value": "260ms",
+        "purpose": "Switch knob travel."
+      },
+      {
+        "name": "panel-enter",
+        "value": "220ms, translateY(6px) to 0",
+        "purpose": "Opening a section; leaving takes 90ms opacity only."
+      },
+      {
+        "name": "leader-draw",
+        "value": "520ms",
+        "purpose": "A Fig. 1 leader drawing in violet and its anchor halo settling."
+      },
+      {
+        "name": "pending-loop",
+        "value": "900ms alternate, infinite",
+        "purpose": "Sweep, ring and pulse while a write is pending."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-pinned",
+        "value": "(max-width: 839px) and (min-height: 560px)"
+      },
+      {
+        "name": "wide",
+        "value": "840px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled button per panel, for the action the panel exists for.",
+      "html": "<button class=\"ds-btn-primary\">Apply to headset</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 0; border-radius: 6px; background: #ece8e1; color: #0e0f12; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 160ms; } .ds-btn-primary:hover { background: #ffffff; } .ds-btn-primary:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; cursor: default; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A hairline-bordered button for secondary actions.",
+      "html": "<button class=\"ds-btn-secondary\">Check now</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid #3d424b; border-radius: 6px; background: transparent; color: #ece8e1; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: border-color 160ms, background 160ms; } .ds-btn-secondary:hover { border-color: #868b94; background: #1b1e23; } .ds-btn-secondary:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Link Button",
+      "kind": "button",
+      "refersTo": "button-link",
+      "description": "Plain underlined text for secondary choices such as Revert or What's new.",
+      "html": "<button class=\"ds-link-button\">Revert</button>",
+      "css": ".ds-link-button { border: 0; padding: 0; background: none; color: #ece8e1; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; text-decoration: underline; text-decoration-color: #3d424b; text-underline-offset: 3px; cursor: pointer; } .ds-link-button:hover { text-decoration-color: #ece8e1; } .ds-link-button:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "chip",
+      "refersTo": "segmented-option",
+      "description": "Mutually exclusive choices; the confirmed one is filled with ink, the pending one shows a sweeping violet rule.",
+      "html": "<div class=\"ds-seg\" role=\"radiogroup\"><button class=\"ds-seg-opt\">Off</button><button class=\"ds-seg-opt ds-on\">ANC</button><button class=\"ds-seg-opt ds-pending\">TalkThru</button></div>",
+      "css": ".ds-seg { display: flex; gap: 2px; padding: 3px; border: 1px solid #2a2e35; border-radius: 9px; background: #0e0f12; width: 320px; } .ds-seg-opt { position: relative; flex: 1 1 0; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #b0b3ba; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 180ms cubic-bezier(0.16, 1, 0.3, 1), color 180ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-seg-opt:hover:not(.ds-on) { background: #1b1e23; color: #ece8e1; } .ds-seg-opt:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; } .ds-seg-opt.ds-on { background: #ece8e1; color: #0e0f12; font-weight: 600; } .ds-seg-opt.ds-pending { color: #ece8e1; } .ds-seg-opt.ds-pending::after { content: ''; position: absolute; left: 10%; bottom: 4px; width: 30%; height: 2px; border-radius: 2px; background: #a46bff; animation: ds-sweep 900ms cubic-bezier(0.16, 1, 0.3, 1) infinite alternate; } @keyframes ds-sweep { to { transform: translateX(133%); } }"
+    },
+    {
+      "name": "Switch",
+      "kind": "input",
+      "refersTo": "switch",
+      "description": "On/off switch; ink when on, knob ringed in violet while pending.",
+      "html": "<button class=\"ds-switch ds-on\" role=\"switch\" aria-checked=\"true\" aria-label=\"Lights\"><span class=\"ds-knob\"></span></button>",
+      "css": ".ds-switch { position: relative; width: 44px; height: 26px; padding: 0; border: 1px solid #3d424b; border-radius: 13px; background: #0e0f12; cursor: pointer; transition: background 200ms cubic-bezier(0.16, 1, 0.3, 1), border-color 200ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-knob { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #868b94; transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), background 200ms; } .ds-switch.ds-on { border-color: #ece8e1; background: #ece8e1; } .ds-switch.ds-on .ds-knob { transform: translateX(18px); background: #0e0f12; } .ds-switch:hover:not(.ds-on) { border-color: #868b94; } .ds-switch:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Select",
+      "kind": "input",
+      "refersTo": "select",
+      "description": "Native select on the ground colour with a drawn chevron.",
+      "html": "<div class=\"ds-select-wrap\"><select class=\"ds-select\"><option>Fade</option><option>Steady</option></select></div>",
+      "css": ".ds-select-wrap { position: relative; width: 240px; } .ds-select-wrap::after { content: ''; position: absolute; top: 50%; right: 13px; width: 6px; height: 6px; border-right: 1.5px solid #b0b3ba; border-bottom: 1.5px solid #b0b3ba; transform: translateY(-70%) rotate(45deg); pointer-events: none; } .ds-select { width: 100%; height: 34px; padding: 0 34px 0 11px; border: 1px solid #3d424b; border-radius: 6px; background: #0e0f12; color: #ece8e1; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; appearance: none; cursor: pointer; } .ds-select:hover { border-color: #868b94; } .ds-select:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Section Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Unnumbered text tabs with an ink underline on the selected one, sitting on a hairline.",
+      "html": "<nav class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab ds-on\" role=\"tab\">Sound</button><button class=\"ds-tab\" role=\"tab\">Lights</button><button class=\"ds-tab\" role=\"tab\">EQ</button><button class=\"ds-tab\" role=\"tab\">Device</button></nav>",
+      "css": ".ds-tabs { display: flex; gap: 4px; border-bottom: 1px solid #2a2e35; background: #0e0f12; } .ds-tab { position: relative; height: 40px; padding: 0 12px; border: 0; background: transparent; color: #868b94; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: color 160ms; } .ds-tab:hover { color: #ece8e1; } .ds-tab.ds-on { color: #ece8e1; font-weight: 600; } .ds-tab.ds-on::after { content: ''; position: absolute; right: 12px; bottom: -1px; left: 12px; height: 2px; background: #ece8e1; } .ds-tab:focus-visible { outline: 2px solid #a46bff; outline-offset: -2px; border-radius: 4px; }"
+    },
+    {
+      "name": "Panel Field",
+      "kind": "custom",
+      "refersTo": "panel-field",
+      "description": "One setting: part key and title left, reading right-aligned, control below, hint underneath.",
+      "html": "<section class=\"ds-field\"><div class=\"ds-field-head\"><h3><span class=\"ds-key\">1</span>Noise control</h3><span class=\"ds-reading\">ANC</span></div><p class=\"ds-hint\">Cancels the noise around you.</p></section>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 10px; width: 360px; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; color: #ece8e1; } .ds-field-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 26px; } .ds-field h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 600; } .ds-key { display: inline-grid; place-items: center; width: 17px; height: 17px; border: 1px solid #3d424b; border-radius: 50%; font-size: 10px; font-weight: 600; line-height: 1; color: #b0b3ba; font-variant-numeric: tabular-nums; } .ds-reading { font-size: 13px; color: #b0b3ba; font-variant-numeric: tabular-nums; } .ds-hint { margin: -2px 0 0; font-size: 12px; color: #868b94; }"
+    },
+    {
+      "name": "Fig. 1 Callout",
+      "kind": "custom",
+      "refersTo": "callout-on",
+      "description": "A numbered callout on the headset figure; the part under attention gets a violet ring and wash.",
+      "html": "<div class=\"ds-plate\"><button class=\"ds-callout ds-on\"><span class=\"ds-what\"><span class=\"ds-ckey\">1</span>Noise control</span><span class=\"ds-creading\">ANC</span></button><button class=\"ds-callout\"><span class=\"ds-what\"><span class=\"ds-ckey\">2</span>Lights</span><span class=\"ds-creading\">On \u00b7 Fade</span></button></div>",
+      "css": ".ds-plate { display: flex; gap: 24px; padding: 24px; border: 1px solid #2a2e35; border-radius: 10px; background: radial-gradient(circle at 1px 1px, rgb(236 232 225 / 0.06) 1px, transparent 1.2px) 0 0 / 14px 14px, #15171b; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; } .ds-callout { display: flex; flex-direction: column; gap: 1px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; text-align: left; line-height: 1.2; cursor: pointer; transition: background 160ms; } .ds-callout:hover, .ds-callout.ds-on { background: rgb(164 107 255 / 0.16); } .ds-callout:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; } .ds-what { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #868b94; } .ds-ckey { display: inline-grid; place-items: center; width: 15px; height: 15px; border: 1px solid #3d424b; border-radius: 50%; font-size: 9.5px; font-weight: 600; line-height: 1; color: #b0b3ba; } .ds-callout.ds-on .ds-ckey { border-color: #a46bff; color: #ece8e1; } .ds-creading { font-size: 15px; font-weight: 600; color: #ece8e1; white-space: nowrap; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "card",
+      "refersTo": "toast",
+      "description": "A failure notice floating at the bottom of the window; the only surface with a cast shadow.",
+      "html": "<div class=\"ds-toast\" role=\"alert\"><svg class=\"ds-toast-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><line x1=\"12\" x2=\"12\" y1=\"8\" y2=\"12\"/><line x1=\"12\" x2=\"12.01\" y1=\"16\" y2=\"16\"/></svg><span class=\"ds-toast-msg\">The headset didn't confirm the change.</span><button class=\"ds-toast-close\" aria-label=\"Dismiss\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div>",
+      "css": ".ds-toast { display: flex; align-items: flex-start; gap: 10px; width: 360px; padding: 11px 10px 11px 12px; border: 1px solid #3d424b; border-radius: 10px; background: #1b1e23; box-shadow: 0 10px 30px -8px rgb(0 0 0 / 0.6); color: #ece8e1; font-family: 'Archivo Variable', 'Noto Sans', system-ui, sans-serif; } .ds-toast-icon { flex: none; margin-top: 1px; color: #ff7c69; } .ds-toast-msg { flex: 1; font-size: 13px; } .ds-toast-close { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #868b94; cursor: pointer; } .ds-toast-close:hover { color: #ece8e1; } .ds-toast-close:focus-visible { outline: 2px solid #a46bff; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Service Manual Figure",
+    "overview": "The window is a page from a technical manual, printed in warm ink on graphite drafting film. Its centre is Fig. 1, a line drawing of the headset whose numbered callouts read the device's live state. Everything around the figure is quiet, ink-only chrome: one enormous battery numeral, a status line, unnumbered section tabs and one open section at a time. The headset's own lighting is the only colour in the window, and it lives inside the figure.\n\nThe density is that of a desktop utility opened for a minute and closed again. It is calm and exact, with no hype. Readings sit right-aligned at the end of their row, numerals are tabular and never reflow, and every control shows only what the headset has confirmed. Pending and draft states are drawn, not filled: a sweeping violet rule, a ringing knob, a dashed lighting ring.\n\nThe world rejects the vendor-app sidebar with a product render and neon cards. It must never imitate JBL's or QuantumENGINE's branding.",
+    "keyCharacteristics": [
+      "Graphite film ground with warm ink type; chrome carries no hue.",
+      "One reserved violet (the logo's) marks attention: focus, the selected part, a hovered preview, a pending write.",
+      "Alert red appears only for failures and a low battery (15% or less).",
+      "Archivo Variable at two widths: 112 for the battery figure, 100 for everything else.",
+      "Fig. 1 is a live technical drawing: leaders, anchors, numbered part keys, an italic figure caption.",
+      "Flat surfaces separated by hairlines; elevation only for the floating toast."
+    ],
+    "rules": [
+      {
+        "name": "The Quarantined Colour Rule",
+        "body": "Hue belongs to the headset. The lighting colours appear only inside Fig. 1 and in the colour swatches that edit them; the chrome around them is ink on graphite.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Violet Rule",
+        "body": "Violet means \"this has your attention\" and nothing else: focus, the selected or hovered part, a preview or a pending write. It is never decoration, never a brand fill, never a button colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Alert Only Rule",
+        "body": "Coral is reserved for failures and a low battery. State comes first, so it is the single exception to ink-only chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fixed Figures Rule",
+        "body": "Every number that changes (battery, readings, dial, EQ axis labels) is set with tabular numerals so it never shifts its neighbours.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Giant Rule",
+        "body": "Only the battery is large. Everything else stays between 12px and 15px; the hierarchy comes from weight and ink strength.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Labels, tabs, headings and buttons are in sentence case at their normal tracking. There are no all-caps labels.",
+        "section": "typography"
+      },
+      {
+        "name": "The Reading At The Margin Rule",
+        "body": "Every row ends in its reading, right-aligned: field readings, device list values, the status line and the right-hand callouts.",
+        "section": "layout"
+      },
+      {
+        "name": "The Hairline Over Shadow Rule",
+        "body": "Surfaces are separated by a 1px line in `line` or `line-strong`, never by a drop shadow. Only something that floats above the page casts one.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep chrome in ink on graphite (`ground`, `film`, `film-raised`, `ink`, `ink-2`, `ink-3`); the lighting colours live only inside Fig. 1 and its swatches.",
+      "Do use violet only for attention: focus (2px outline, 2px offset), the selected or hovered part, previews and pending writes.",
+      "Do end every row with its reading, right-aligned, in tabular numerals.",
+      "Do show pending and draft states as drawing (a sweeping rule, a ringing knob, a dashed stroke) and switch to the solid, filled state only when the headset confirms.",
+      "Do separate surfaces with 1px hairlines and tonal steps; give a cast shadow only to a floating toast.",
+      "Do keep one filled ink button per panel, for the action the panel exists for.",
+      "Do number a setting with a part key only when it has a matching callout on Fig. 1."
+    ],
+    "donts": [
+      "Don't use violet as a fill for buttons, headings or decoration; it would stop meaning \"attention\".",
+      "Don't use coral for anything but failures and a battery at 15% or less.",
+      "Don't add a second large figure; only the battery is set at display size.",
+      "Don't set labels in all caps or add small tracked-out labels above headings; sentence case at 12px ink 3 is the label voice.",
+      "Don't build the vendor-app layout: no sidebar, no product render, no neon cards, nothing that imitates JBL or QuantumENGINE branding.",
+      "Don't show controls the headset can't support over the dongle, or a state it hasn't confirmed."
+    ]
+  }
+}

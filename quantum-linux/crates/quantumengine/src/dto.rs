@@ -1,0 +1,181 @@
+//! The types that cross the IPC boundary to the UI. Flat, display-ready
+//! views of what `quantumengined` reports over D-Bus. Field names reach
+//! TypeScript in camelCase.
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+/// Whether the window can reach `quantumengined`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum Service {
+    /// Looking for it, or starting it.
+    Connecting,
+    Up,
+    /// It could not be reached or started; `serviceError` says why.
+    Down,
+}
+
+/// Everything the window shows, pushed whenever any of it changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDto {
+    pub service: Service,
+    pub service_error: String,
+    /// The running service is older than this window (or too old to say its
+    /// version), so it lacks things the window offers, such as the EQ.
+    pub service_outdated: bool,
+    pub headset: HeadsetDto,
+    pub eq: EqDto,
+    pub surround: SurroundDto,
+    pub update: UpdateDto,
+}
+
+/// Virtual 7.1 surround, rendered on this PC.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SurroundDto {
+    pub enabled: bool,
+    /// Why it isn't working, or empty.
+    pub status: String,
+}
+
+/// The headset, as the service last saw it. Only meaningful once `link` is
+/// `"ready"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadsetDto {
+    /// `"no_dongle"` | `"no_access"` | `"headset_off"` | `"ready"`.
+    pub link: String,
+    /// Why the dongle can't be opened, when `link` is `"no_access"`.
+    pub link_detail: String,
+    pub battery: u8,
+    /// `"off"` | `"on"` | `"talkthru"`.
+    pub anc: String,
+    /// `"off"` | `"low"` | `"mid"` | `"high"`.
+    pub sidetone: String,
+    /// Boom down and not muted.
+    pub mic_active: bool,
+    /// 0 (full chat) to 16 (full game).
+    pub dial: u8,
+    pub lights_on: bool,
+    /// The name the headset has for this host.
+    pub device_name: String,
+    pub serial: String,
+    pub firmware: Vec<String>,
+    /// A headset change is in progress.
+    pub busy: bool,
+    /// The last failed command's message, or empty.
+    pub last_error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EqDto {
+    pub enabled: bool,
+    pub profile: String,
+    pub profiles: Vec<String>,
+    /// `"off"` | `"stereo"` | `"surround"`.
+    pub correction: String,
+    /// Why the EQ isn't working, or empty.
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDto {
+    /// The running service's version.
+    pub service_version: String,
+    /// A newer release's version, or empty.
+    pub available: String,
+    pub can_install: bool,
+    /// What the updater is doing or last failed at.
+    pub status: String,
+    pub busy: bool,
+    /// Whether the service checks GitHub once a day.
+    pub checks: bool,
+}
+
+impl Default for StateDto {
+    fn default() -> Self {
+        Self {
+            service: Service::Connecting,
+            service_error: String::new(),
+            service_outdated: false,
+            headset: HeadsetDto {
+                link: "no_dongle".into(),
+                link_detail: String::new(),
+                battery: 0,
+                anc: String::new(),
+                sidetone: String::new(),
+                mic_active: false,
+                dial: 8,
+                lights_on: false,
+                device_name: String::new(),
+                serial: String::new(),
+                firmware: Vec::new(),
+                busy: false,
+                last_error: String::new(),
+            },
+            eq: EqDto {
+                enabled: false,
+                profile: String::new(),
+                profiles: Vec::new(),
+                correction: String::new(),
+                status: String::new(),
+            },
+            surround: SurroundDto { enabled: false, status: String::new() },
+            update: UpdateDto {
+                service_version: String::new(),
+                available: String::new(),
+                can_install: false,
+                status: String::new(),
+                busy: false,
+                checks: true,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type, tauri_specta::Event)]
+pub struct StateEvent(pub StateDto);
+
+/// One lighting zone as the UI edits it, and as it is remembered between
+/// runs (the headset can't report its lighting).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoneDto {
+    /// 0-100.
+    pub brightness: u8,
+    /// `#rrggbb`, one to [`InfoDto::max_colours`] of them.
+    pub colours: Vec<String>,
+    /// The raw effect byte, one of [`InfoDto::effects`].
+    pub effect: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LightingDto {
+    pub logo: ZoneDto,
+    pub ring: ZoneDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectDto {
+    pub id: u8,
+    /// Human-readable, e.g. `Chase strobe logo`.
+    pub label: String,
+}
+
+/// Facts that don't change while the window is open.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct InfoDto {
+    /// This window's version.
+    pub version: String,
+    pub effects: Vec<EffectDto>,
+    pub max_colours: u32,
+    /// The frequencies, in Hz, of each point `eq_response` returns.
+    pub eq_frequencies: Vec<f64>,
+}

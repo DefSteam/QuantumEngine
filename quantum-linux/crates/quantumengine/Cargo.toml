@@ -1,23 +1,33 @@
 [package]
 name = "quantumengine"
-description = "Desktop control panel for JBL Quantum 810 Wireless headsets on Linux"
+description = "Desktop window for JBL Quantum 810 Wireless headsets on Linux (Tauri shell over the quantumengined service)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-# egui needs a newer compiler than the library and CLI do.
 rust-version = "1.88"
 
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
 [dependencies]
+# Only for the lighting effect names and the colour limit; the window never
+# opens the headset (quantumengined does).
 jbl-quantum.workspace = true
 quantumengine-dbus.workspace = true
 zbus.workspace = true
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "persistence"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
-# Tray icon (StatusNotifierItem). async-io matches zbus's own default backend
-# above, so the process runs one non-tokio executor, not two.
-ksni = { version = "0.3", default-features = false, features = ["blocking", "async-io"] }
-# Decodes the embedded icon PNG into the ARGB pixels ksni wants. Same version
-# eframe already pulls in, just with fewer features.
-image = { version = "0.25", default-features = false, features = ["png"] }
-notify-rust = "4"
+serde_json = "1"
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+
+[dev-dependencies]
+specta-typescript = "0.0.12"
+
+[features]
+# Serves the built `ui/dist` from inside the binary instead of loading the
+# Vite dev server. Release builds turn it on (the PKGBUILD passes
+# `--features quantumengine/custom-protocol`; `tauri build` does it itself).
+custom-protocol = ["tauri/custom-protocol"]
