@@ -155,7 +155,7 @@ The curves come from JBL QuantumENGINE's configuration files, as extracted by
 [alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
 tested by [DefSteam](https://github.com/DefSteam). Thank you both.
 
-## Virtual surround
+## Virtual surround (Still Under Development)
 
 On Windows, you set the headset to 7.1 in the sound settings and JBL's
 software turns the eight channels into 3D sound for headphones. QuantumEngine

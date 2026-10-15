@@ -97,6 +97,12 @@ This is an independent project and isn't affiliated with or endorsed by JBL or
 Harman International. "JBL" and "Quantum" are their trademarks. You use this
 software at your own risk.
 
+## Credits
+
+The curves come from JBL QuantumENGINE's configuration files, as extracted by
+[alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
+tested by [DefSteam](https://github.com/DefSteam). Thank you both.
+
 ## License
 
 Licensed under either the [MIT license](quantum-linux/LICENSE-MIT) or the
