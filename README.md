@@ -5,14 +5,15 @@
 # QuantumEngine for Linux
 
 Unofficial Linux control software for the **JBL Quantum 810 Wireless** headset.
-You get noise cancelling, TalkThru, sidetone and RGB lighting without Windows or
-JBL's QuantumENGINE app.
+Control noise cancelling, TalkThru, sidetone, lighting and equalizer profiles
+without Windows or JBL's QuantumENGINE app.
 
 It includes:
 
-- **QuantumEngine**, a desktop app that follows the headset live.
+- **QuantumEngine**, a responsive desktop app with a live headset illustration,
+  device status, sound controls, lighting editor and equalizer.
 - **`quantumengined`**, a background service with a system tray menu.
-- **Plasma widget**, for KDE Plasma panel and desktop control.
+- **Plasma widget**, with a layout that adapts to horizontal and vertical panels.
 - **`quantumenginectl`**, a command-line tool with JSON output for scripts.
 - **`jbl-quantum`**, a Rust library for anyone building their own tools.
 
@@ -26,10 +27,17 @@ the app, widget and CLI talk to it over D-Bus. No Windows or vendor software nee
 - Set sidetone (hearing your own voice): **Off**, **Low**, **Mid** or **High**
 - Turn the lights on or off
 - Set colours, brightness and animation for the logo and ring lighting
-- Equalizer: JBL headset tuning and 19 sound profiles
+- Equalizer: visualize the active curve, choose JBL headset tuning and 19 sound profiles
 - Virtual 7.1 surround sound
 
-Auto-off timer and hardware volume aren't supported over the dongle.
+The desktop layout adapts to the window shape: wide windows place the headset
+overview beside the controls, while compact layouts stack the content. The EQ
+view keeps its curve and enable control visible alongside the headset on wide
+windows, with presets in their own section.
+
+The dongle doesn't expose the headset's hardware volume or auto-off timer. Use
+the desktop's system mixer for playback volume. If the mixer slider moves but
+playback loudness doesn't change, see the [WirePlumber volume workaround](quantum-linux/README.md#system-volume-slider-moves-but-loudness-does-not).
 
 ## Supported hardware
 
@@ -61,8 +69,17 @@ cd QuantumEngine/quantum-linux/packaging
 makepkg -si
 ```
 
-The package installs the udev rule, desktop launcher, tray service and Plasma widget for you.
-Unplug the dongle and plug it back in afterwards. Once installed, the app updates itself.
+To build and install the current checkout directly, run the included scripts:
+
+```sh
+cd QuantumEngine/quantum-linux
+./build.sh
+./install.sh
+```
+
+The package installs the udev rule, desktop launcher, tray service and Plasma
+widget. Unplug the dongle and plug it back in after installation. Once
+installed, the app can check for and install new releases.
 
 ### Anywhere else
 
@@ -126,9 +143,11 @@ software at your own risk.
 
 ## Credits
 
-The curves come from JBL QuantumENGINE's configuration files, as extracted by
-[alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
-tested by [DefSteam](https://github.com/DefSteam). Thank you both.
+QuantumEngine was created by [sidmax7](https://github.com/sidmax7). The EQ
+profiles come from JBL QuantumENGINE's configuration files, extracted by
+[alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and tested
+by [DefSteam](https://github.com/DefSteam). DefSteam also contributed UI and
+application improvements.
 
 ## License
 

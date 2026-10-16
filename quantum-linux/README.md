@@ -39,6 +39,9 @@ been found yet.
 
 For volume, use your system mixer.
 
+If the system volume slider moves but playback loudness does not, see the
+[WirePlumber volume workaround](#system-volume-slider-moves-but-loudness-does-not).
+
 **Only the Quantum 810 Wireless is supported.** Other Quantum models may use a
 different protocol, so the tools refuse to talk to them.
 
@@ -60,6 +63,11 @@ Or build it yourself (run `makepkg` as your normal user, not with `sudo`):
 cd packaging
 makepkg -si
 ```
+
+To build a pacman package from this checkout, run `./build.sh`, then install it
+with `./install.sh`. The build writes release binaries to `target/release/` and
+the package archive to `packaging/`. You can also pass a package archive path to
+`./install.sh` to install a different build.
 
 The package installs the udev rule for you. Unplug the dongle and plug it back
 in afterwards. Once installed, the app updates itself (see [Updates](#updates)).
@@ -96,12 +104,18 @@ tools report a permission error.
 
 Run `quantumengine`, or use **QuantumEngine** in your app menu.
 
-The window is built around a drawing of the headset that shows its state:
-noise control, lights, the microphone and the game/chat dial, with the
-battery above it. It follows the headset live, so pressing the ANC button,
-moving the dial or muting the microphone shows up straight away. Below the
-drawing are four sections: Sound, Lights, EQ and Device. While a change is
-being applied, the controls are locked until the headset confirms it.
+The 970×800 window adapts to its aspect ratio. In a wide window, the headset
+overview and live status stay beside the controls; in a narrow window they
+stack. Short landscape windows keep the overview in view while the selected
+section scrolls independently. The headset illustration shows battery,
+noise-control mode, EQ, lighting, microphone and game/chat dial state as it
+changes.
+
+Sound, Lights, EQ and Device are organized into dedicated sections. In a wide
+layout, the EQ curve and enable control stay below the headset overview while
+the preset list sits in the EQ section. Narrow layouts stack the curve,
+controls and presets together. While a change is being applied, the controls
+wait for confirmation from the device or service.
 
 The headset can't report its lighting colours, so the app remembers what you
 last applied. While you edit them, the drawing previews the colours and
@@ -125,8 +139,10 @@ The package starts it automatically at login. To stop that, disable
 
 On KDE Plasma, add **QuantumEngine** from *Add Widgets…* for battery, noise
 control, lights and the EQ on the panel or desktop, without opening the
-window. It needs the `plasma5support` package, which most Plasma installs
-already have.
+window. Horizontal panels use a side-by-side overview and controls; vertical
+panels stack them. It needs the `plasma5support` package, which most Plasma
+installs already have. After installing an update, restart Plasma or remove
+and re-add the widget to reload its interface.
 
 ## Equalizer
 
@@ -153,7 +169,7 @@ use one or the other.
 
 The curves come from JBL QuantumENGINE's configuration files, as extracted by
 [alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
-tested by [DefSteam](https://github.com/DefSteam). Thank you both.
+tested by [DefSteam](https://github.com/DefSteam).
 
 ## Virtual surround (Still Under Development)
 
@@ -213,7 +229,7 @@ $ quantumenginectl eq bass boost
 on, Bass Boost (headset tuning: stereo)
 
 $ quantumenginectl update
-QuantumEngine 0.3.0 is up to date
+QuantumEngine 0.3.12 is up to date
 
 $ quantumenginectl rgb both chase '#ff0000' '#0000ff' --brightness 60
 applied
@@ -255,6 +271,42 @@ earcups always show the same thing.
   but the headset is off or out of range. Switch it off and on again.
 - **Occasional "Connection timed out"**: the wireless link is weak or dropping.
   Try again, and avoid running several tools against the headset at once.
+
+### System volume slider moves but loudness does not
+
+On some systems, WirePlumber uses the Quantum 810 dongle's hardware mixer,
+which can report volume changes without changing playback loudness. For
+WirePlumber 0.5, force software volume for this headset by creating
+`~/.config/wireplumber/wireplumber.conf.d/51-jbl-soft-mixer.conf` with:
+
+```ini
+monitor.alsa.rules = [
+  {
+    matches = [
+      {
+        device.name = "alsa_card.usb-Harman_International_Inc_JBL_Quantum810_Wireless-00"
+      }
+    ]
+    actions = {
+      update-props = {
+        api.alsa.soft-mixer = true
+      }
+    }
+  }
+]
+```
+
+Then restart WirePlumber with `systemctl --user restart wireplumber`. This
+per-user setting persists across restarts and only matches the Quantum 810.
+Remove the file and restart WirePlumber to undo it.
+
+## Credits
+
+QuantumEngine was created by [sidmax7](https://github.com/sidmax7). EQ profiles
+are from JBL QuantumENGINE's configuration, extracted by
+[alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
+tested by [DefSteam](https://github.com/DefSteam). DefSteam also contributed UI
+and application improvements.
 
 ## Working on the window
 

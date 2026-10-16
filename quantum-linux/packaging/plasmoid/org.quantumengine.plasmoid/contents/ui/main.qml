@@ -23,6 +23,8 @@ PlasmoidItem {
 
     readonly property string statusCommand: "quantumenginectl --json status"
     readonly property int lowBattery: 15
+    readonly property bool wideLayout: Plasmoid.formFactor === PlasmaCore.Types.Horizontal
+    readonly property int firstControlRow: updateVersion !== "" ? 3 : 2
 
     // Empty until the first successful read, so a failing command never
     // passes for a real "no dongle" answer.
@@ -245,19 +247,23 @@ PlasmoidItem {
         }
     }
 
-    fullRepresentation: ColumnLayout {
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 18
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 14
-        spacing: Kirigami.Units.largeSpacing
+    fullRepresentation: GridLayout {
+        columns: root.wideLayout ? 2 : 1
+        columnSpacing: Kirigami.Units.largeSpacing
+        rowSpacing: Kirigami.Units.largeSpacing
+        Layout.preferredWidth: Kirigami.Units.gridUnit * (root.wideLayout ? 34 : 19)
+        Layout.minimumWidth: Kirigami.Units.gridUnit * (root.wideLayout ? 30 : 16)
 
         // Header: what this is and whether it's connected.
         RowLayout {
             Layout.fillWidth: true
             Layout.margins: Kirigami.Units.smallSpacing
+            Layout.columnSpan: root.wideLayout ? 2 : 1
             spacing: Kirigami.Units.largeSpacing
 
             Kirigami.Icon {
                 source: "audio-headset-symbolic"
+                color: "#a46bff"
                 Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                 Layout.preferredHeight: Kirigami.Units.iconSizes.medium
             }
@@ -284,12 +290,16 @@ PlasmoidItem {
             }
         }
 
-        Kirigami.Separator { Layout.fillWidth: true }
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            Layout.columnSpan: root.wideLayout ? 2 : 1
+        }
 
         // A newer release, when the service has found one.
         RowLayout {
             visible: root.updateVersion !== ""
             Layout.fillWidth: true
+            Layout.columnSpan: root.wideLayout ? 2 : 1
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.largeSpacing
@@ -335,6 +345,8 @@ PlasmoidItem {
         RowLayout {
             visible: root.ready
             Layout.fillWidth: true
+            Layout.column: 0
+            Layout.row: root.firstControlRow
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.largeSpacing
@@ -376,6 +388,8 @@ PlasmoidItem {
         ColumnLayout {
             visible: root.ready
             Layout.fillWidth: true
+            Layout.column: root.wideLayout ? 1 : 0
+            Layout.row: root.wideLayout ? root.firstControlRow : root.firstControlRow + 1
             spacing: Kirigami.Units.smallSpacing
 
             PlasmaComponents3.Label {
@@ -410,6 +424,11 @@ PlasmoidItem {
                         checked: root.anc === modelData.mode
                         enabled: !root.busy
                         onClicked: root.setAnc(modelData.mode)
+                        background: Rectangle {
+                            radius: 8
+                            color: root.anc === modelData.mode ? "#a46bff"
+                                : parent.hovered ? "#29232f" : "transparent"
+                        }
                     }
                 }
             }
@@ -419,6 +438,8 @@ PlasmoidItem {
         RowLayout {
             visible: root.ready
             Layout.fillWidth: true
+            Layout.column: root.wideLayout ? 1 : 0
+            Layout.row: root.firstControlRow + (root.wideLayout ? 1 : 2)
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.largeSpacing
@@ -451,6 +472,9 @@ PlasmoidItem {
         ColumnLayout {
             visible: !root.ready
             Layout.fillWidth: true
+            Layout.column: 0
+            Layout.row: root.firstControlRow
+            Layout.columnSpan: root.wideLayout ? 2 : 1
             Layout.topMargin: Kirigami.Units.largeSpacing
             Layout.bottomMargin: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.smallSpacing
@@ -475,6 +499,8 @@ PlasmoidItem {
         ColumnLayout {
             visible: root.serviceUp && root.eqSupported
             Layout.fillWidth: true
+            Layout.column: root.wideLayout ? 1 : 0
+            Layout.row: root.firstControlRow + (root.wideLayout ? 2 : 3)
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
@@ -528,6 +554,7 @@ PlasmoidItem {
         PlasmaComponents3.Label {
             visible: root.errorText !== ""
             Layout.fillWidth: true
+            Layout.columnSpan: root.wideLayout ? 2 : 1
             Layout.leftMargin: Kirigami.Units.smallSpacing
             Layout.rightMargin: Kirigami.Units.smallSpacing
             text: root.errorText
@@ -535,10 +562,14 @@ PlasmoidItem {
             wrapMode: Text.WordWrap
         }
 
-        Kirigami.Separator { Layout.fillWidth: true }
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            Layout.columnSpan: root.wideLayout ? 2 : 1
+        }
 
         PlasmaComponents3.ToolButton {
             Layout.fillWidth: true
+            Layout.columnSpan: root.wideLayout ? 2 : 1
             icon.name: "window-new-symbolic"
             text: "Open QuantumEngine"
             onClicked: {
