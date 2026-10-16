@@ -1,0 +1,41 @@
+# Local checkout package. Unlike PKGBUILD, this packages the binaries already
+# built in the working tree and does not download a tagged source archive.
+pkgname=quantumengine
+pkgver="$(awk '/^\[workspace\.package\]/{in_package=1; next} /^\[/{in_package=0} in_package && /^version =/{gsub(/"/, "", $3); print $3; exit}' "$startdir/../Cargo.toml")"
+pkgrel=1
+pkgdesc="Control JBL Quantum 810 Wireless headsets on Linux"
+arch=('x86_64' 'aarch64')
+url="https://github.com/sidmax7/QuantumEngine"
+license=('MIT OR Apache-2.0')
+depends=('glibc' 'libgcc' 'hicolor-icon-theme' 'webkit2gtk-4.1' 'gtk3' 'curl')
+optdepends=('pipewire: the equalizer'
+            'wireplumber: the equalizer (0.5 or newer)'
+            'pipewire-audio: virtual 7.1 surround (with libmysofa)'
+            'polkit: installing updates from the app'
+            'plasma5support: the QuantumEngine Plasma widget'
+            'plasma-workspace: the QuantumEngine Plasma widget')
+options=('!debug')
+source=()
+sha256sums=()
+
+package() {
+  local root="$(cd "$startdir/.." && pwd)"
+  install -Dm755 "$root/target/release/quantumenginectl" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$root/target/release/quantumengine" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$root/target/release/quantumengined" -t "$pkgdir/usr/bin/"
+  install -Dm644 "$root/packaging/quantumengine.desktop" -t "$pkgdir/usr/share/applications/"
+  install -Dm644 "$root/packaging/quantumengine-tray.desktop" -t "$pkgdir/etc/xdg/autostart/"
+
+  local plasmoid=org.quantumengine.plasmoid
+  while IFS= read -r -d '' file; do
+    install -Dm644 "$file" "$pkgdir/usr/share/plasma/plasmoids/$plasmoid/${file#"$root/packaging/plasmoid/$plasmoid/"}"
+  done < <(find "$root/packaging/plasmoid/$plasmoid" -type f -print0)
+
+  for size in 16 32 48 64 128 256 512; do
+    install -Dm644 "$root/packaging/icons/hicolor/${size}x${size}/apps/quantumengine.png" \
+      -t "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/"
+  done
+  install -Dm644 "$root/udev/70-jbl-quantum.rules" -t "$pkgdir/usr/lib/udev/rules.d/"
+  install -Dm644 "$root/README.md" -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 "$root/LICENSE-MIT" "$root/LICENSE-APACHE" -t "$pkgdir/usr/share/licenses/$pkgname/"
+}

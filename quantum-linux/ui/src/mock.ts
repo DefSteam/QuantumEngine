@@ -64,8 +64,8 @@ function scenarioState(scenario: string): StateDto {
         : { enabled: true, profile: "CS2", profiles: PROFILES, correction: "stereo", status: "" },
     surround: { enabled: false, status: "" },
     update: {
-      serviceVersion: scenario === "outdated" ? "" : "0.3.0",
-      available: scenario === "update" ? "0.3.1" : "",
+      serviceVersion: scenario === "outdated" ? "" : "0.3.12",
+      available: scenario === "update" ? "0.3.12" : "",
       canInstall: true,
       status: "",
       busy: false,
@@ -81,7 +81,7 @@ export function installMock(scenario: string) {
     logo: { brightness: 100, colours: ["#ffffff"], effect: 0 },
   };
   const info: InfoDto = {
-    version: "0.3.0",
+    version: "0.3.12",
     effects: [
       [0, "Fade"], [1, "Instant"], [2, "Chase"], [3, "Strobe"], [4, "Chase strobe logo"],
       [5, "Chase flash logo"], [7, "Fast"], [8, "Chase blink logo"], [9, "Rainbow logo"], [10, "Spectrum"],
@@ -139,7 +139,7 @@ export function installMock(scenario: string) {
         case "eq_response":
           return curve(a.profile as string, a.correction as string);
         case "check_for_updates":
-          await change((s) => (s.update.status = "QuantumEngine 0.3.0 is up to date"), 900);
+          await change((s) => (s.update.status = "QuantumEngine 0.3.12 is up to date"), 900);
           return "";
         case "install_update":
           await change((s) => (s.update.busy = true), 100);

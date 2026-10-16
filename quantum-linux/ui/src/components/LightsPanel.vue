@@ -15,7 +15,6 @@ const applying = computed(() => app.pending === "lighting");
   <div class="panel">
     <PanelField
       title="Lights"
-      :part="2"
       hint="The headset can't report its lighting, so the colours below are what was last applied from this window. Both earcups always match."
     >
       <template #aside>

@@ -50,8 +50,12 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
 .status {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 20px;
+  gap: 16px;
   align-items: end;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--film-raised), var(--film));
 }
 
 .battery {
@@ -66,7 +70,7 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
 
 .figure {
   grid-area: figure;
-  font-size: 84px;
+  font-size: 60px;
   line-height: 0.86;
   font-weight: 250;
   font-variation-settings: "wdth" 112;
@@ -77,7 +81,7 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
 .unit {
   grid-area: unit;
   margin-top: 6px;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 400;
   font-variation-settings: "wdth" 112;
   color: var(--ink-2);
@@ -92,7 +96,7 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
 
 @media (max-width: 839px) and (min-height: 560px) {
   .figure {
-    font-size: clamp(56px, 9vh, 84px);
+    font-size: clamp(48px, 7vh, 68px);
   }
 }
 
@@ -141,5 +145,24 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
   font-size: 12px;
   color: var(--ink-3);
   text-wrap: pretty;
+}
+
+@media (max-height: 559px) {
+  .status {
+    padding: 8px 10px;
+    gap: 10px;
+  }
+
+  .figure {
+    font-size: 48px;
+  }
+
+  .label {
+    margin-top: 5px;
+  }
+
+  .link {
+    padding-left: 0;
+  }
 }
 </style>

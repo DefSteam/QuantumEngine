@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { CircleAlert } from "lucide-vue-next";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useApp } from "../stores/app";
-import EqCurve from "./EqCurve.vue";
+import EqCurvePanel from "./EqCurvePanel.vue";
 import PanelField from "./PanelField.vue";
 import SegmentedControl from "./SegmentedControl.vue";
-import ToggleSwitch from "./ToggleSwitch.vue";
 
 const app = useApp();
+const layoutQuery = typeof window === "undefined"
+  ? null
+  : window.matchMedia("(min-width: 840px)");
+const wideLayout = ref(layoutQuery?.matches ?? false);
+
+function updateLayout() {
+  wideLayout.value = layoutQuery?.matches ?? false;
+}
+
+onMounted(() => layoutQuery?.addEventListener("change", updateLayout));
+onBeforeUnmount(() => layoutQuery?.removeEventListener("change", updateLayout));
 
 const CORRECTIONS = [
   { value: "off", label: "Off" },
@@ -69,78 +78,86 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
 
 <template>
   <div class="panel">
-    <PanelField title="Equalizer" hint="Applied on this PC to the headset's game audio. Chat is left alone.">
-      <template #aside>
-        <ToggleSwitch
-          label="Equalizer"
-          :checked="on"
+    <div class="eq-layout">
+      <div v-if="!wideLayout" class="eq-column eq-curve-column">
+        <EqCurvePanel
+          :freqs="app.info.eqFrequencies"
+          :points="points"
+          :preview="preview"
+          :active="on"
           :pending="pendingOf('eq') !== null"
-          :disabled="!usable || busy"
+          :usable="usable"
+          :busy="busy"
+          :profile="eq.profile"
+          :correction-label="CORRECTIONS.find((c) => c.value === eq.correction)?.label ?? 'no'"
+          :previewing="previewing"
+          :service-up="app.serviceUp"
+          :service-outdated="app.state.serviceOutdated"
+          :has-profiles="eq.profiles.length > 0"
+          :status="eq.status"
           @toggle="app.setEqEnabled"
         />
-      </template>
-      <div class="plot">
-        <EqCurve :freqs="app.info.eqFrequencies" :points="points" :preview="preview" :active="on" />
-        <p class="plot-note">
-          <template v-if="previewing && previewing !== eq.profile && preview">
-            <span class="swatch-line violet" />{{ previewing }}, preview
-          </template>
-          <template v-else-if="app.state.serviceOutdated && !eq.profiles.length">
-            The background service running now is too old for the EQ; restart it above
-          </template>
-          <template v-else-if="on">{{ eq.profile }} with {{ CORRECTIONS.find((c) => c.value === eq.correction)?.label ?? "no" }} tuning</template>
-          <template v-else-if="app.serviceUp">Off: the sound passes through unchanged</template>
-          <template v-else>Off: the background service isn't running</template>
-        </p>
       </div>
-      <p v-if="eq.status" class="status"><CircleAlert :size="15" :stroke-width="1.75" />{{ eq.status }}</p>
-    </PanelField>
 
-    <PanelField title="Profile" :reading="eq.profile">
-      <div v-for="g in groups" :key="g.name" class="group">
-        <h4>{{ g.name }}</h4>
-        <div class="profiles" role="radiogroup" :aria-label="`${g.name} profiles`" @mouseleave="showPreview(null)">
-          <button
-            v-for="p in g.profiles"
-            :key="p"
-            type="button"
-            role="radio"
-            class="profile"
-            :aria-checked="p === eq.profile"
-            :class="{ on: p === eq.profile, pending: p === pendingProfile }"
+      <div class="eq-column eq-options-column">
+        <PanelField title="Profile" :reading="eq.profile">
+          <div v-for="g in groups" :key="g.name" class="group">
+            <h4>{{ g.name }}</h4>
+            <div class="profiles" role="radiogroup" :aria-label="`${g.name} profiles`" @mouseleave="showPreview(null)">
+              <button
+                v-for="p in g.profiles"
+                :key="p"
+                type="button"
+                role="radio"
+                class="profile"
+                :aria-checked="p === eq.profile"
+                :class="{ on: p === eq.profile, pending: p === pendingProfile }"
+                :disabled="!usable || busy"
+                @mouseenter="showPreview(p)"
+                @focus="showPreview(p)"
+                @blur="showPreview(null)"
+                @click="p !== eq.profile && app.setEqProfile(p)"
+              >
+                <span class="mark" aria-hidden="true" />{{ p }}
+              </button>
+            </div>
+          </div>
+        </PanelField>
+
+        <PanelField
+          title="Headset tuning"
+          hint="JBL's own correction for the Quantum 810, under the profile. JBL stereo is a gentle bass cut; JBL surround is the curve it uses with spatial sound."
+        >
+          <SegmentedControl
+            label="Headset tuning"
+            :options="CORRECTIONS"
+            :value="eq.correction"
+            :pending="pendingOf('eqcorrection')"
             :disabled="!usable || busy"
-            @mouseenter="showPreview(p)"
-            @focus="showPreview(p)"
-            @blur="showPreview(null)"
-            @click="p !== eq.profile && app.setEqProfile(p)"
-          >
-            <span class="mark" aria-hidden="true" />{{ p }}
-          </button>
-        </div>
+            @select="app.setEqCorrection"
+          />
+        </PanelField>
       </div>
-    </PanelField>
-
-    <PanelField
-      title="Headset tuning"
-      hint="JBL's own correction for the Quantum 810, under the profile. JBL stereo is a gentle bass cut; JBL surround is the curve it uses with spatial sound."
-    >
-      <SegmentedControl
-        label="Headset tuning"
-        :options="CORRECTIONS"
-        :value="eq.correction"
-        :pending="pendingOf('eqcorrection')"
-        :disabled="!usable || busy"
-        @select="app.setEqCorrection"
-      />
-    </PanelField>
-
-    <p class="credit">
-      Profiles from JBL QuantumENGINE's configuration, extracted by alessandromrc and tested by DefSteam.
-    </p>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.eq-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.eq-column {
+  min-width: 0;
+}
+
+.eq-column + .eq-column {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
 .plot {
   padding: 12px 12px 10px;
   border: 1px solid var(--line);
@@ -258,10 +275,4 @@ h4 {
   }
 }
 
-.credit {
-  margin: 28px 0 8px;
-  font-size: 12px;
-  color: var(--ink-3);
-  text-wrap: pretty;
-}
 </style>
