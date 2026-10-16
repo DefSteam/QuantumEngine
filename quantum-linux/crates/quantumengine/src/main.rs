@@ -11,6 +11,7 @@ mod commands;
 mod dto;
 mod lighting;
 mod service;
+mod window_state;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -71,21 +72,15 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        // Size, position and maximized only: never restore a hidden or
-        // undecorated window.
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::SIZE
-                        | tauri_plugin_window_state::StateFlags::POSITION
-                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
-                )
-                .build(),
-        )
         .manage(Arc::clone(&link))
+        .manage(window_state::Tracker::default())
+        .on_window_event(window_state::on_event)
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            if let Some(window) = app.get_webview_window("main") {
+                window_state::restore(&window);
+            }
             service::watch(app.handle().clone(), link);
             Ok(())
         })
