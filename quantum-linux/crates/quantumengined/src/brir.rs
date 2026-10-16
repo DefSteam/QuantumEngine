@@ -460,7 +460,7 @@ mod tests {
         if !Path::new(KEMAR).exists() {
             return;
         }
-        let brirs = build(Path::new(KEMAR), &[30.0, 330.0, 90.0, 270.0]).unwrap();
+        let brirs = build(Path::new(KEMAR), &[30.0, 330.0, 90.0, 270.0], &SurroundProfile::default()).unwrap();
         for (b, left_side) in brirs.iter().zip([true, false, true, false]) {
             let (l, r) = (energy(&b.left[..2400]), energy(&b.right[..2400]));
             assert_eq!(l > r, left_side, "left {l} right {r}");
@@ -491,7 +491,10 @@ mod report {
             let k = (f * FFT_SIZE as f64 / f64::from(RATE)).round() as usize;
             println!("correction {f:>7} Hz: {:+.1} dB", 20.0 * f64::from(buf[k].norm()).log10());
         }
-        for (az, b) in [0.0, 30.0, 90.0, 150.0].iter().zip(build(kemar, &[0.0, 30.0, 90.0, 150.0]).unwrap()) {
+        for (az, b) in [0.0, 30.0, 90.0, 150.0]
+            .iter()
+            .zip(build(kemar, &[0.0, 30.0, 90.0, 150.0], &SurroundProfile::default()).unwrap())
+        {
             let split = (0.0025 * f64::from(RATE)) as usize + 64;
             let e = |x: &[f32]| x.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>();
             let direct = e(&b.left[..split]) + e(&b.right[..split]);
