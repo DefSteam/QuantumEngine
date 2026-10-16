@@ -58,6 +58,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         eq.clone(),
         surround.clone(),
         updater.clone(),
+        notifier.clone(),
     )?;
     // The icon is a convenience; the headset, EQ and updates must keep
     // working for the window, widget and CLI without it.

@@ -191,6 +191,28 @@ fn band_args(bands: Vec<BandDto>) -> Vec<quantumengine_dbus::EqBand> {
     bands.into_iter().map(|b| (b.kind, b.freq, b.gain, b.q)).collect()
 }
 
+/// Reads what an unverified model answers to, as text to paste into an issue.
+#[tauri::command]
+#[specta::specta]
+pub async fn probe_unverified(link: Shared<'_>) -> Result<String> {
+    with_proxy(&link, |p| p.probe_unverified()).await
+}
+
+/// Chooses whether to use the unverified model, and which writes to allow.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_unverified(link: Shared<'_>, in_use: bool, allowed: Vec<String>) -> Result<()> {
+    with_proxy(&link, move |p| p.set_unverified(in_use, allowed)).await
+}
+
+/// Asks for access to the unverified model (a password prompt). Returns at
+/// once; the outcome shows in the state's `unverified.access`.
+#[tauri::command]
+#[specta::specta]
+pub async fn grant_unverified_access(link: Shared<'_>) -> Result<()> {
+    with_proxy(&link, |p| p.grant_unverified_access()).await
+}
+
 /// Virtual 7.1 surround; on also makes it the default output.
 #[tauri::command]
 #[specta::specta]

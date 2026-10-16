@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { CircleAlert } from "lucide-vue-next";
 import { useApp, type Section } from "./stores/app";
 import DevicePanel from "./components/DevicePanel.vue";
@@ -40,6 +40,19 @@ function onTabKey(e: KeyboardEvent) {
   app.section = next.id;
   document.getElementById(`tab-${next.id}`)?.focus();
 }
+
+// An unverified model needs a decision, so show where to make it, once per device.
+const seenUnverified = new Set<string>();
+watch(
+  () => app.state.unverified,
+  (u) => {
+    if (u.id && !u.inUse && !seenUnverified.has(u.id)) {
+      seenUnverified.add(u.id);
+      app.section = "device";
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   app.start().catch((e) => app.toast(e instanceof Error ? e.message : String(e)));

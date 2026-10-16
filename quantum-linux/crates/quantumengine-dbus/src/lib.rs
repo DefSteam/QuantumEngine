@@ -153,6 +153,45 @@ pub trait Headset {
     /// off/settle/on cycle that takes a few hundred milliseconds.
     fn set_lighting(&self, zones: Vec<ZoneLightingArg>) -> zbus::Result<()>;
 
+    // A headset from the same vendor that this software has not been verified
+    // against. It is listed and can be probed with reads only; control is
+    // opt-in, one feature at a time. All of these are empty when no such
+    // device is plugged in.
+
+    /// `vendor:product` (e.g. `0ecb:203e`) of the unverified device, or empty.
+    #[zbus(property)]
+    fn unverified_device(&self) -> zbus::Result<String>;
+
+    /// The name the device reports for itself.
+    #[zbus(property)]
+    fn unverified_name(&self) -> zbus::Result<String>;
+
+    /// Why the device can't be used yet (no access to it, or a permission
+    /// request in progress), for showing as-is, or empty.
+    #[zbus(property)]
+    fn unverified_access(&self) -> zbus::Result<String>;
+
+    /// Whether the user chose to use the device. Off by default.
+    #[zbus(property)]
+    fn unverified_in_use(&self) -> zbus::Result<bool>;
+
+    /// Which writes the user allowed, any of `"anc"`, `"sidetone"`, `"lights"`.
+    /// None by default, which leaves the device read-only.
+    #[zbus(property)]
+    fn unverified_allowed(&self) -> zbus::Result<Vec<String>>;
+
+    /// Reads (never writes) what the device answers to and returns a plain-text
+    /// report, meant for pasting into an issue.
+    fn probe_unverified(&self) -> zbus::Result<String>;
+
+    /// Chooses whether to use the unverified device, and which writes to allow.
+    fn set_unverified(&self, in_use: bool, allowed: Vec<String>) -> zbus::Result<()>;
+
+    /// Asks for access to the device (a udev rule for this one ID, approved
+    /// with the user's password) and returns at once; watch
+    /// [`unverified_access`](Self::unverified_access).
+    fn grant_unverified_access(&self) -> zbus::Result<()>;
+
     // Equalizer. Applied on the PC to the headset's game output by a PipeWire
     // filter; works whether or not the headset is connected right now.
 

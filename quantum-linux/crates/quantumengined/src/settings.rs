@@ -7,6 +7,7 @@
 use crate::eq::custom::CustomProfile;
 use crate::eq::profiles::Correction;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -16,6 +17,17 @@ pub struct Settings {
     pub eq: EqSettings,
     pub surround: SurroundSettings,
     pub updates: UpdateSettings,
+    /// What the user chose for each unverified model, by `vendor:product`.
+    pub unverified: BTreeMap<String, UnverifiedChoice>,
+}
+
+/// Opt-in for one unverified model. Everything is off until the user turns it on.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct UnverifiedChoice {
+    pub in_use: bool,
+    /// Any of `anc`, `sidetone`, `lights`.
+    pub allowed: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

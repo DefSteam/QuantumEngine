@@ -24,6 +24,7 @@ pub struct HeadsetIface {
     eq: eq::Handle,
     surround: surround::Handle,
     updater: update::Handle,
+    notifier: crate::notifier::Notifier,
 }
 
 #[interface(name = "org.quantumengine.Headset1")]
@@ -121,6 +122,71 @@ impl HeadsetIface {
         let (reply, rx) = mpsc::channel();
         self.dispatch(device::Command::Lighting(zones, reply))?;
         recv(rx)
+    }
+
+    #[zbus(property)]
+    fn unverified_device(&self) -> String {
+        self.unverified(|u| u.id.clone())
+    }
+
+    #[zbus(property)]
+    fn unverified_name(&self) -> String {
+        self.unverified(|u| u.name.clone())
+    }
+
+    #[zbus(property)]
+    fn unverified_access(&self) -> String {
+        // A request for access in progress (or that failed) explains more than
+        // the plain "cannot open".
+        let asked = device::grant_status();
+        if asked.is_empty() { self.unverified(|u| u.access.clone()) } else { asked }
+    }
+
+    #[zbus(property)]
+    fn unverified_in_use(&self) -> bool {
+        self.unverified(|u| u.in_use)
+    }
+
+    #[zbus(property)]
+    fn unverified_allowed(&self) -> Vec<String> {
+        self.unverified(|u| u.allowed.clone())
+    }
+
+    fn probe_unverified(&self) -> fdo::Result<String> {
+        let (reply, rx) = mpsc::channel();
+        self.dispatch(device::Command::Probe(reply))?;
+        recv(rx)
+    }
+
+    fn set_unverified(&self, in_use: bool, allowed: Vec<String>) -> fdo::Result<()> {
+        let (reply, rx) = mpsc::channel();
+        self.dispatch(device::Command::SetUnverified(in_use, allowed, reply))?;
+        recv(rx)
+    }
+
+    /// Asks for access to the unverified device. The password prompt can take
+    /// as long as the user does, so it runs on its own thread and this
+    /// returns at once; its progress is `UnverifiedAccess`.
+    fn grant_unverified_access(&self) -> fdo::Result<()> {
+        let id = self.unverified(|u| u.id.clone());
+        let (vid, pid) = jbl_quantum::access::parse_id(&id)
+            .ok_or_else(|| fdo::Error::Failed("no unverified model is plugged in".into()))?;
+        if !device::grant_status().is_empty() && device::grant_status().starts_with("Waiting") {
+            return Ok(());
+        }
+        device::set_grant_status("Waiting for your password…");
+        self.notifier.notify();
+        let notifier = self.notifier.clone();
+        std::thread::spawn(move || {
+            match jbl_quantum::access::grant(vid, pid) {
+                // The new rule applies to the device already plugged in; the
+                // worker's next look finds it open.
+                Ok(()) => device::set_grant_status(""),
+                Err(e) => device::set_grant_status(format!("Couldn't get access: {e}")),
+            }
+            notifier.notify();
+        });
+        Ok(())
     }
 
     #[zbus(property)]
@@ -293,6 +359,12 @@ impl HeadsetIface {
 }
 
 impl HeadsetIface {
+    /// Reads something about the unverified model, or the type's default when
+    /// there isn't one.
+    fn unverified<T: Default>(&self, f: impl FnOnce(&device::Unverified) -> T) -> T {
+        self.shared.lock().unwrap().unverified.as_ref().map(f).unwrap_or_default()
+    }
+
     fn dispatch(&self, cmd: device::Command) -> fdo::Result<()> {
         self.commands
             .send(cmd)
@@ -362,6 +434,7 @@ fn link_str(link: &Link) -> String {
     match link {
         Link::NoDongle => "no_dongle",
         Link::NoAccess(_) => "no_access",
+        Link::Unverified => "unverified",
         Link::HeadsetOff => "headset_off",
         Link::Ready => "ready",
     }
@@ -408,10 +481,11 @@ pub fn serve(
     eq: eq::Handle,
     surround: surround::Handle,
     updater: update::Handle,
+    notifier: crate::notifier::Notifier,
 ) -> zbus::Result<impl Fn() + Send + Sync + use<>> {
     connection
         .object_server()
-        .at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands, eq, surround, updater })?;
+        .at(quantumengine_dbus::OBJECT_PATH, HeadsetIface { shared, commands, eq, surround, updater, notifier })?;
 
     let iface_ref = connection
         .object_server()
@@ -436,6 +510,11 @@ pub fn serve(
             zbus::block_on(iface.firmware_changed(emitter)),
             zbus::block_on(iface.busy_changed(emitter)),
             zbus::block_on(iface.last_error_changed(emitter)),
+            zbus::block_on(iface.unverified_device_changed(emitter)),
+            zbus::block_on(iface.unverified_name_changed(emitter)),
+            zbus::block_on(iface.unverified_access_changed(emitter)),
+            zbus::block_on(iface.unverified_in_use_changed(emitter)),
+            zbus::block_on(iface.unverified_allowed_changed(emitter)),
             zbus::block_on(iface.eq_enabled_changed(emitter)),
             zbus::block_on(iface.eq_profiles_changed(emitter)),
             zbus::block_on(iface.eq_custom_profiles_changed(emitter)),

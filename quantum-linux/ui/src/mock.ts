@@ -39,13 +39,23 @@ function curve(profile: string, correction: string): number[] {
 }
 
 function scenarioState(scenario: string): StateDto {
-  const ready = !["off", "nodongle", "noaccess", "down"].includes(scenario);
+  const unverified = scenario.startsWith("unverified");
+  const using = scenario === "unverifiedUse";
+  const ready = !["off", "nodongle", "noaccess", "down"].includes(scenario) && (!unverified || using);
   return {
     service: scenario === "down" ? "down" : "up",
     serviceError: scenario === "down" ? "The background service (quantumengined) didn't start." : "",
     serviceOutdated: scenario === "outdated",
     headset: {
-      link: ready ? "ready" : scenario === "off" ? "headset_off" : scenario === "noaccess" ? "no_access" : "no_dongle",
+      link: ready
+        ? "ready"
+        : unverified
+          ? "unverified"
+          : scenario === "off"
+            ? "headset_off"
+            : scenario === "noaccess"
+              ? "no_access"
+              : "no_dongle",
       linkDetail: "",
       battery: scenario === "low" ? 11 : 82,
       anc: "on",
@@ -72,6 +82,9 @@ function scenarioState(scenario: string): StateDto {
             previewing: false,
           },
     surround: { enabled: false, status: "" },
+    unverified: unverified
+      ? { id: "0ecb:203e", name: "JBL Quantum800 Wireless", access: scenario === "unverifiedAccess" ? "cannot open /dev/hidraw3: Permission denied (os error 13)" : "", inUse: using, allowed: using ? ["anc"] : [] }
+      : { id: "", name: "", access: "", inUse: false, allowed: [] },
     update: {
       serviceVersion: scenario === "outdated" ? "" : "0.3.0",
       available: scenario === "update" ? "0.3.1" : "",
@@ -214,6 +227,37 @@ export function installMock(scenario: string) {
         case "set_update_checks":
           await change((s) => (s.update.checks = a.enabled as boolean), 200);
           return a.enabled;
+        case "probe_unverified":
+          await change(() => {}, 700);
+          return [
+            "QuantumEngine compatibility report (jbl-quantum 0.4.2)",
+            'Device:   0ecb:203e "JBL Quantum800 Wireless" at /dev/hidraw3',
+            "Verified: no (this library is only verified on 0ecb:2069)",
+            "Reads only; nothing was written to the device.",
+            "  0x68 link         answered   01                 plausible",
+            "  0x49 battery      answered   4b (75%)          plausible",
+            "  0x45 noise ctl    answered   01                 plausible",
+            "  0x5C sidetone     answered   00                 plausible",
+            "  0x67 mic          no answer  report 0x67 did not answer (it is probably write-only)",
+            "  0x62 dial         answered   08 (8/16)          plausible",
+            "  0x4A lights       answered   01                 plausible",
+            "  0x61 serial       answered   4d 4d 30 31 36 39 2d 49 4e 30 30 35 39 36 33 37 plausible",
+            "  0x51 firmware     answered   00 07 02 00 08 02 00 00 00 00 07 02 plausible",
+            "  0x5B host name    answered   00 00               plausible",
+            "Summary: 9 of 10 reads answered, 9 plausible.",
+          ].join("\n");
+        case "set_unverified":
+          await change((s) => {
+            s.unverified.inUse = a.inUse as boolean;
+            s.unverified.allowed = a.allowed as string[];
+            if (a.inUse) Object.assign(s.headset, scenarioState("ready").headset);
+            else s.headset.link = "unverified";
+          }, 300);
+          return null;
+        case "grant_unverified_access":
+          await change((s) => (s.unverified.access = "Waiting for your password…"), 100);
+          await change((s) => (s.unverified.access = ""), 1800);
+          return null;
         case "restart_service":
           await change((s) => {
             Object.assign(s, scenarioState("ready"));

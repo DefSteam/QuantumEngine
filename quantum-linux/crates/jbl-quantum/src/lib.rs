@@ -13,8 +13,10 @@
 //! ```
 //!
 //! Tested against a Quantum 810 Wireless (`0ecb:2069`) on firmware 0.7.2 /
-//! 0.8.2. Other Quantum models are not supported: they may or may not share
-//! this protocol, and guessing is how headsets get bricked.
+//! 0.8.2. Other Quantum models are not verified: they may or may not share
+//! this protocol, and guessing is how headsets get bricked. To find out safely,
+//! [`Headset::discover_unverified`] lists them and [`Headset::probe_node`]
+//! makes read-only requests and reports what answered.
 //!
 //! # Writing settings
 //!
@@ -67,10 +69,13 @@
 //! `QUANTUMENGINE_SIMULATE=1 cargo run`.
 
 mod hidraw;
+pub mod access;
+pub mod probe;
 pub mod protocol;
 mod sim;
 
 pub use hidraw::HidrawNode;
+pub use probe::{ProbeReport, Reading};
 pub use protocol::{Anc, Colour, Effect, Sidetone, Zone, MAX_SLOTS, PRODUCT_ID, VENDOR_ID};
 
 use hidraw::Transport;
@@ -195,6 +200,16 @@ impl Headset {
     /// List every matching dongle.
     pub fn discover() -> Result<Vec<HidrawNode>> {
         Ok(hidraw::discover(VENDOR_ID, PRODUCT_ID)?)
+    }
+
+    /// Dongles from the same vendor that this crate has not been verified
+    /// against (a different product ID). They are listed, never opened for
+    /// control: see [`probe`] for how a user finds out whether one works.
+    pub fn discover_unverified() -> Result<Vec<HidrawNode>> {
+        Ok(hidraw::discover_vendor(VENDOR_ID)?
+            .into_iter()
+            .filter(|n| n.product_id != PRODUCT_ID)
+            .collect())
     }
 
     /// Open the first dongle found, or a simulated headset if

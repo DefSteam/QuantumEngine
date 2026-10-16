@@ -42,6 +42,15 @@ pub struct HidrawNode {
 /// minors happen to be free — so callers must always discover rather than
 /// hardcode a path.
 pub fn discover(vid: u16, pid: u16) -> io::Result<Vec<HidrawNode>> {
+    scan(|node_vid, node_pid| node_vid == vid && node_pid == pid)
+}
+
+/// Every hidraw node whose vendor is `vid`, whatever the product.
+pub fn discover_vendor(vid: u16) -> io::Result<Vec<HidrawNode>> {
+    scan(|node_vid, _| node_vid == vid)
+}
+
+fn scan(wanted: impl Fn(u16, u16) -> bool) -> io::Result<Vec<HidrawNode>> {
     let base = Path::new("/sys/class/hidraw");
     if !base.exists() {
         return Ok(Vec::new());
@@ -60,7 +69,7 @@ pub fn discover(vid: u16, pid: u16) -> io::Result<Vec<HidrawNode>> {
         let Some((node_vid, node_pid)) = parse_hid_id(&text) else {
             continue;
         };
-        if node_vid != vid || node_pid != pid {
+        if !wanted(node_vid, node_pid) {
             continue;
         }
 

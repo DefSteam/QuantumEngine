@@ -72,6 +72,7 @@ PlasmoidItem {
         case "ready": return "Connected";
         case "no_dongle": return "No dongle plugged in";
         case "no_access": return "Cannot access the dongle";
+        case "unverified": return "Unverified model (open QuantumEngine)";
         case "headset_off": return "Headset off or out of range";
         default: return "Starting…";
         }

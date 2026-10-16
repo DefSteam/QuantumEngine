@@ -43,10 +43,25 @@ Auto-off timer and hardware volume aren't supported over the dongle.
 | Headset | USB ID | Status |
 |---|---|---|
 | JBL Quantum 810 Wireless | `0ecb:2069` | ✅ tested |
-| Other JBL Quantum models | — | ❌ not supported |
+| Other Harman / JBL Quantum dongles (for example the Quantum 800, `0ecb:203e`) | — | ⚠️ unverified, opt-in |
 
-Other models may use a different protocol, so the tools refuse to talk to them
-rather than guess. If you own one and want to help add it, open an issue.
+Only the 810 has been tested. Other models might share the protocol, share part
+of it, or not share it at all, and there is no way to know without trying. So
+QuantumEngine doesn't ignore them and doesn't guess either: if it finds another
+Harman headset dongle, the window's **Device** tab offers to check it, safely:
+
+1. **Check what it answers.** Reads only. Nothing is written to the headset.
+   You get a plain-text report to paste into an issue, which is how a model
+   moves from unverified to supported.
+2. **Use this headset.** Shows what the headset reports, read-only.
+3. **Allow changes.** Noise control, sidetone and lights, each off until you turn
+   it on, because they send commands built for the 810.
+
+Opening the device may need permission first. The window's **Allow access…**
+button (or `quantumenginectl unverified access`) adds a udev rule for that one
+device ID after you enter your password. The same steps are available as
+`quantumenginectl unverified`, `unverified probe`, `unverified use on` and
+`unverified allow anc sidetone lights`.
 
 ## Install
 

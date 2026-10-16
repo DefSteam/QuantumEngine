@@ -39,8 +39,12 @@ been found yet.
 
 For volume, use your system mixer.
 
-**Only the Quantum 810 Wireless is supported.** Other Quantum models may use a
-different protocol, so the tools refuse to talk to them.
+**Only the Quantum 810 Wireless is verified.** Other Quantum models may use a
+different protocol, so QuantumEngine never sends them anything until you say so:
+it shows an unverified Harman dongle, lets you check it with reads only, and
+only then lets you use it and allow noise control, sidetone and lights one at a
+time. Open the **Device** tab, or run `quantumenginectl unverified`. The
+report it makes is what you paste into an issue.
 
 ## Install
 

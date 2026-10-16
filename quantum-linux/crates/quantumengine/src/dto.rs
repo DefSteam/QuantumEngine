@@ -29,6 +29,22 @@ pub struct StateDto {
     pub eq: EqDto,
     pub surround: SurroundDto,
     pub update: UpdateDto,
+    pub unverified: UnverifiedDto,
+}
+
+/// A headset from the same vendor that this software isn't verified on.
+/// `id` is empty when there isn't one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UnverifiedDto {
+    /// `vendor:product`, e.g. `0ecb:203e`.
+    pub id: String,
+    pub name: String,
+    /// Why it can't be used yet (no access), or what's being done about it.
+    pub access: String,
+    pub in_use: bool,
+    /// Any of `"anc"`, `"sidetone"`, `"lights"`: the writes the user allowed.
+    pub allowed: Vec<String>,
 }
 
 /// Virtual 7.1 surround, rendered on this PC.
@@ -45,7 +61,7 @@ pub struct SurroundDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct HeadsetDto {
-    /// `"no_dongle"` | `"no_access"` | `"headset_off"` | `"ready"`.
+    /// `"no_dongle"` | `"no_access"` | `"unverified"` | `"headset_off"` | `"ready"`.
     pub link: String,
     /// Why the dongle can't be opened, when `link` is `"no_access"`.
     pub link_detail: String,
@@ -143,6 +159,13 @@ impl Default for StateDto {
                 previewing: false,
             },
             surround: SurroundDto { enabled: false, status: String::new() },
+            unverified: UnverifiedDto {
+                id: String::new(),
+                name: String::new(),
+                access: String::new(),
+                in_use: false,
+                allowed: Vec::new(),
+            },
             update: UpdateDto {
                 service_version: String::new(),
                 available: String::new(),

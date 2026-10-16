@@ -39,6 +39,13 @@ COMMANDS:
     eq bands [profile]          list a profile's bands (default: current)
     eq delete <profile>         delete one of your own profiles
     surround [on|off]           show or set virtual 7.1 surround
+    unverified                  show a headset model this isn't verified on
+    unverified probe            read-only report of what it answers to, to
+                                paste into an issue (writes nothing)
+    unverified access           allow access to it (asks for your password)
+    unverified use [on|off]     use it read-only, or stop
+    unverified allow <feature>...
+                                allow writes: anc, sidetone, lights, or none
     update                      check GitHub for a newer release
     update install              install it (asks for your password)
     update checks [on|off]      show or set the daily update check
@@ -181,6 +188,7 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
         "watch" => cmd_watch(&proxy, json)?,
         "eq" => cmd_eq(&proxy, params, json)?,
         "surround" => cmd_surround(&proxy, params, json)?,
+        "unverified" => cmd_unverified(&proxy, params, json)?,
         "update" => cmd_update(&proxy, params, json)?,
         other => return Err(format!("unknown command '{other}' (try --help)")),
     }
@@ -194,6 +202,7 @@ fn require_ready(proxy: &HeadsetProxyBlocking) -> Result<(), String> {
         "ready" => Ok(()),
         "no_dongle" => Err(jbl_quantum::Error::NotFound.to_string()),
         "no_access" => Err(proxy.link_detail().unwrap_or_default()),
+        "unverified" => Err("this headset model isn't verified; see `quantumenginectl unverified`".into()),
         _ => Err(jbl_quantum::Error::NotConnected.to_string()),
     }
 }
@@ -328,6 +337,74 @@ fn cmd_surround(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> 
         println!("{}", surround.json());
     } else {
         println!("{}", surround.summary());
+    }
+    Ok(())
+}
+
+/// An unverified model: show it, check it with reads only, and opt in.
+fn cmd_unverified(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result<(), String> {
+    let id = proxy.unverified_device().map_err(dbus_err)?;
+    if id.is_empty() {
+        return if json {
+            println!("{{\"device\":\"\"}}");
+            Ok(())
+        } else {
+            Err("no unverified headset is plugged in".into())
+        };
+    }
+    match params.first().map(String::as_str) {
+        None => {}
+        Some("probe") => {
+            print!("{}", proxy.probe_unverified().map_err(dbus_err)?);
+            return Ok(());
+        }
+        Some("access") => {
+            let (vid, pid) = jbl_quantum::access::parse_id(&id).ok_or("unreadable device id")?;
+            println!("Adding a udev rule for {id} only. Your password is asked for.");
+            jbl_quantum::access::grant(vid, pid)?;
+            println!("Done. Run `quantumenginectl unverified probe` to see what it answers.");
+            return Ok(());
+        }
+        Some("use") => {
+            let on = match params.get(1).map(String::as_str) {
+                Some("on") => true,
+                Some("off") => false,
+                _ => return Err("usage: quantumenginectl unverified use on|off".into()),
+            };
+            let allowed = proxy.unverified_allowed().map_err(dbus_err)?;
+            proxy.set_unverified(on, allowed).map_err(dbus_err)?;
+        }
+        Some("allow") => {
+            let features: Vec<String> = params[1..].iter().filter(|f| *f != "none").cloned().collect();
+            if params.len() < 2 {
+                return Err("usage: quantumenginectl unverified allow <anc|sidetone|lights>... | none".into());
+            }
+            let in_use = proxy.unverified_in_use().map_err(dbus_err)?;
+            proxy.set_unverified(in_use, features).map_err(dbus_err)?;
+        }
+        Some(other) => return Err(format!("unknown unverified command '{other}' (probe, access, use, allow)")),
+    }
+    // Let the service apply the change before showing it.
+    std::thread::sleep(Duration::from_millis(300));
+    let name = proxy.unverified_name().map_err(dbus_err)?;
+    let access = proxy.unverified_access().map_err(dbus_err)?;
+    let in_use = proxy.unverified_in_use().map_err(dbus_err)?;
+    let allowed = proxy.unverified_allowed().map_err(dbus_err)?;
+    if json {
+        let list: Vec<String> = allowed.iter().map(|a| format!("\"{a}\"")).collect();
+        println!(
+            "{{\"device\":\"{id}\",\"name\":\"{}\",\"access\":\"{}\",\"in_use\":{in_use},\"allowed\":[{}]}}",
+            escape(&name),
+            escape(&access),
+            list.join(",")
+        );
+    } else {
+        println!("device:    {id} {name} (not verified)");
+        println!("in use:    {}", if in_use { "yes, read-only except what's allowed" } else { "no" });
+        println!("allowed:   {}", if allowed.is_empty() { "nothing (read-only)".to_string() } else { allowed.join(", ") });
+        if !access.is_empty() {
+            println!("access:    {access}");
+        }
     }
     Ok(())
 }
@@ -520,6 +597,7 @@ fn link_note(link: &str) -> &'static str {
     match link {
         "no_dongle" => "no dongle plugged in",
         "no_access" => "cannot access the dongle",
+        "unverified" => "an unverified model (see `quantumenginectl unverified`)",
         _ => "not connected (dongle present, headset off or out of range)",
     }
 }

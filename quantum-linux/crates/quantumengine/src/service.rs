@@ -6,7 +6,7 @@
 //! answers properties from memory, so this costs it nothing, and unlike a
 //! `PropertiesChanged` subscription it also notices the service going away.
 
-use crate::dto::{EqDto, HeadsetDto, Service, StateDto, StateEvent, SurroundDto, UpdateDto};
+use crate::dto::{EqDto, HeadsetDto, Service, StateDto, StateEvent, SurroundDto, UnverifiedDto, UpdateDto};
 use quantumengine_dbus::HeadsetProxyBlocking;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -159,6 +159,13 @@ fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
             previewing: get(take("EqPreviewing")),
         },
         surround: SurroundDto { enabled: get(take("SurroundEnabled")), status: get(take("SurroundStatus")) },
+        unverified: UnverifiedDto {
+            id: get(take("UnverifiedDevice")),
+            name: get(take("UnverifiedName")),
+            access: get(take("UnverifiedAccess")),
+            in_use: get(take("UnverifiedInUse")),
+            allowed: get(take("UnverifiedAllowed")),
+        },
         update: UpdateDto {
             service_version,
             available: get(take("UpdateVersion")),

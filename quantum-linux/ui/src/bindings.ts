@@ -50,6 +50,15 @@ export const commands = {
 	importEqProfile: () => typedError<string | null, string>(__TAURI_INVOKE("import_eq_profile")),
 	/**  Virtual 7.1 surround; on also makes it the default output. */
 	setSurroundEnabled: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_surround_enabled", { enabled })),
+	/**  Reads what an unverified model answers to, as text to paste into an issue. */
+	probeUnverified: () => typedError<string, string>(__TAURI_INVOKE("probe_unverified")),
+	/**  Chooses whether to use the unverified model, and which writes to allow. */
+	setUnverified: (inUse: boolean, allowed: string[]) => typedError<null, string>(__TAURI_INVOKE("set_unverified", { inUse, allowed })),
+	/**
+	 *  Asks for access to the unverified model (a password prompt). Returns at
+	 *  once; the outcome shows in the state's `unverified.access`.
+	 */
+	grantUnverifiedAccess: () => typedError<null, string>(__TAURI_INVOKE("grant_unverified_access")),
 	/**  Returns the newer version, or empty when up to date. */
 	checkForUpdates: () => typedError<string, string>(__TAURI_INVOKE("check_for_updates")),
 	/**  Starts installing; progress shows in the state's `update.status`. */
@@ -107,7 +116,7 @@ export type EqDto = {
  *  `"ready"`.
  */
 export type HeadsetDto = {
-	/**  `"no_dongle"` | `"no_access"` | `"headset_off"` | `"ready"`. */
+	/**  `"no_dongle"` | `"no_access"` | `"unverified"` | `"headset_off"` | `"ready"`. */
 	link: string,
 	/**  Why the dongle can't be opened, when `link` is `"no_access"`. */
 	linkDetail: string,
@@ -168,6 +177,7 @@ export type StateDto = {
 	eq: EqDto,
 	surround: SurroundDto,
 	update: UpdateDto,
+	unverified: UnverifiedDto,
 };
 
 export type StateEvent = StateDto;
@@ -177,6 +187,21 @@ export type SurroundDto = {
 	enabled: boolean,
 	/**  Why it isn't working, or empty. */
 	status: string,
+};
+
+/**
+ *  A headset from the same vendor that this software isn't verified on.
+ *  `id` is empty when there isn't one.
+ */
+export type UnverifiedDto = {
+	/**  `vendor:product`, e.g. `0ecb:203e`. */
+	id: string,
+	name: string,
+	/**  Why it can't be used yet (no access), or what's being done about it. */
+	access: string,
+	inUse: boolean,
+	/**  Any of `"anc"`, `"sidetone"`, `"lights"`: the writes the user allowed. */
+	allowed: string[],
 };
 
 export type UpdateDto = {

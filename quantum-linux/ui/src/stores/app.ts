@@ -36,6 +36,7 @@ const EMPTY_STATE: StateDto = {
   eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
   surround: { enabled: false, status: "" },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
+  unverified: { id: "", name: "", access: "", inUse: false, allowed: [] },
 };
 
 const SECTIONS: Section[] = ["sound", "lights", "eq", "device"];
@@ -139,6 +140,10 @@ export const useApp = defineStore("app", () => {
     const lighting = await api.lighting();
     applied.value = lighting;
     draft.value = cloneLighting(lighting);
+    // Dev server only: `&probe` runs the unverified-model check, for screenshots.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has("probe")) {
+      void probeUnverified();
+    }
     // Dev server only: `&editor` opens the EQ editor, for screenshots.
     if (import.meta.env.DEV && new URLSearchParams(location.search).has("editor")) {
       void openEditor(state.value.eq.profile, true);
@@ -216,6 +221,14 @@ export const useApp = defineStore("app", () => {
   const setEqEnabled = (on: boolean) => run(`eq:${on}`, () => api.setEqEnabled(on));
   const setEqProfile = (name: string) => run(`eqprofile:${name}`, () => api.setEqProfile(name));
   const setEqCorrection = (c: string) => run(`eqcorrection:${c}`, () => api.setEqCorrection(c));
+  /** The latest compatibility report from an unverified model. */
+  const probeText = ref("");
+  const probeUnverified = () =>
+    run("unverified:probe", async () => {
+      probeText.value = await api.probeUnverified();
+    });
+  const setUnverified = (inUse: boolean, allowed: string[]) => run("unverified:set", () => api.setUnverified(inUse, allowed));
+  const grantAccess = () => run("unverified:grant", () => api.grantUnverifiedAccess());
   const setSurround = (on: boolean) => run(`surround:${on}`, () => api.setSurround(on));
   const checkForUpdates = () => run("update:check", () => api.checkForUpdates());
   const installUpdate = () => run("update:install", () => api.installUpdate());
@@ -269,6 +282,10 @@ export const useApp = defineStore("app", () => {
     setEqProfile,
     setEqCorrection,
     setSurround,
+    probeText,
+    probeUnverified,
+    setUnverified,
+    grantAccess,
     checkForUpdates,
     installUpdate,
     setUpdateChecks,

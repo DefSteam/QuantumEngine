@@ -289,6 +289,7 @@ fn tooltip_text(snap: &Snapshot) -> String {
         (Link::Ready, ..) => "QuantumEngine".into(),
         (Link::HeadsetOff, ..) => "Headset off or out of range".into(),
         (Link::NoAccess(_), ..) => "Cannot access the dongle".into(),
+        (Link::Unverified, ..) => "Unverified headset model".into(),
         (Link::NoDongle, ..) => "No dongle plugged in".into(),
     }
 }

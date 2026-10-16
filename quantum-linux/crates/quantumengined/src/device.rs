@@ -12,7 +12,9 @@
 //! Per the library docs, nothing is ever re-read in response to an event:
 //! reading the battery or the lights state makes the device send another one.
 
-use jbl_quantum::{Anc, Error, Event, Headset, Sidetone, ZoneLighting, CONFIRM_TIMEOUT};
+use crate::settings;
+use jbl_quantum::{Anc, Error, Event, Headset, HidrawNode, Sidetone, ZoneLighting, CONFIRM_TIMEOUT};
+use std::cell::{Cell, RefCell};
 use std::io;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -40,6 +42,11 @@ pub enum Command {
     Sidetone(Sidetone, Reply<Sidetone>),
     Lights(bool, Reply<bool>),
     Lighting(Vec<ZoneLighting>, Reply<()>),
+    /// Reads what an unverified model answers to, as a report to paste into an
+    /// issue. Reads only.
+    Probe(Reply<String>),
+    /// Whether to use the unverified model, and which writes to allow.
+    SetUnverified(bool, Vec<String>, Reply<()>),
 }
 
 impl Command {
@@ -51,6 +58,8 @@ impl Command {
             Command::Sidetone(_, r) => drop(r.send(Err(err))),
             Command::Lights(_, r) => drop(r.send(Err(err))),
             Command::Lighting(_, r) => drop(r.send(Err(err))),
+            Command::Probe(r) => drop(r.send(Err(err))),
+            Command::SetUnverified(_, _, r) => drop(r.send(Err(err))),
         }
     }
 }
@@ -63,6 +72,9 @@ pub enum Link {
     NoDongle,
     /// A dongle is plugged in but cannot be opened.
     NoAccess(String),
+    /// A dongle from the same vendor is plugged in, but it isn't a model this
+    /// software is verified on, and the user hasn't chosen to use it.
+    Unverified,
     /// The dongle is open; the headset is off or out of range.
     HeadsetOff,
     Ready,
@@ -76,6 +88,35 @@ pub enum Pending {
     Lights(bool),
     Lighting,
 }
+
+/// A device from the same vendor that isn't verified.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Unverified {
+    /// `vendor:product`.
+    pub id: String,
+    pub name: String,
+    /// Why it can't be used yet, or empty.
+    pub access: String,
+    pub in_use: bool,
+    /// Any of `anc`, `sidetone`, `lights`.
+    pub allowed: Vec<String>,
+}
+
+/// Status of a request for access to the unverified device, shown until the
+/// next one. Held apart from the snapshot, which is reset whenever the dongle
+/// is lost.
+static GRANT_STATUS: Mutex<String> = Mutex::new(String::new());
+
+pub fn grant_status() -> String {
+    GRANT_STATUS.lock().unwrap().clone()
+}
+
+pub fn set_grant_status(status: impl Into<String>) {
+    *GRANT_STATUS.lock().unwrap() = status.into();
+}
+
+/// The writes an unverified device can be allowed.
+pub const FEATURES: [&str; 3] = ["anc", "sidetone", "lights"];
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
@@ -92,19 +133,47 @@ pub struct Snapshot {
     pub pending: Option<Pending>,
     /// The last failure, shown until the next command succeeds.
     pub error: Option<String>,
+    /// An unverified model that is plugged in, if any.
+    pub unverified: Option<Unverified>,
 }
 
 pub type Shared = Arc<Mutex<Snapshot>>;
 
 /// Runs until the command channel closes (the window was closed).
 pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn()) {
-    let worker = Worker { shared, commands, repaint };
+    let worker = Worker {
+        shared,
+        commands,
+        repaint,
+        loose: Cell::new(false),
+        reselect: Cell::new(false),
+        nodes: RefCell::new(Vec::new()),
+    };
     loop {
         match Headset::open_first() {
-            Ok(headset) => match worker.serve(&headset) {
-                Flow::Exit => return,
-                Flow::Lost(e) => worker.update(|s| {
-                    *s = Snapshot { error: Some(format!("lost the dongle: {e}")), ..Snapshot::default() }
+            Ok(headset) => {
+                worker.loose.set(false);
+                worker.update(|s| s.unverified = None);
+                match worker.serve(&headset) {
+                    Flow::Exit => return,
+                    Flow::Reselect => continue,
+                    Flow::Lost(e) => worker.update(|s| {
+                        *s = Snapshot { error: Some(format!("lost the dongle: {e}")), ..Snapshot::default() }
+                    }),
+                }
+            }
+            Err(Error::NotFound) => match find_unverified() {
+                Some(found) => match worker.unverified(found) {
+                    Flow::Exit => return,
+                    Flow::Reselect => continue,
+                    Flow::Lost(e) => worker.update(|s| {
+                        *s = Snapshot { error: Some(format!("lost the dongle: {e}")), ..Snapshot::default() }
+                    }),
+                },
+                None => worker.update(|s| {
+                    if s.link != Link::NoDongle || s.unverified.is_some() {
+                        *s = Snapshot { link: Link::NoDongle, ..Snapshot::default() };
+                    }
                 }),
             },
             Err(e) => {
@@ -121,22 +190,59 @@ pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn()) {
         }
         // Wait before retrying, but keep answering commands so the UI is not
         // left with a write that never completes.
-        let until = Instant::now() + REOPEN_EVERY;
-        while Instant::now() < until {
-            match worker.commands.recv_timeout(EVENT_WAIT) {
-                Ok(cmd) => {
-                    worker.update(|s| s.error = Some("no headset dongle is available".into()));
-                    cmd.fail(Error::NotFound);
+        worker.wait_for_retry();
+    }
+}
+
+/// An unverified model that is plugged in: the interfaces it shows as.
+struct Found {
+    id: String,
+    name: String,
+    nodes: Vec<HidrawNode>,
+}
+
+/// The first unverified model plugged in, with all of its interfaces.
+fn find_unverified() -> Option<Found> {
+    let nodes = Headset::discover_unverified().ok()?;
+    let first = nodes.first()?;
+    let (vendor, product) = (first.vendor_id, first.product_id);
+    let nodes: Vec<_> = nodes.into_iter().filter(|n| n.product_id == product).collect();
+    Some(Found { id: format!("{vendor:04x}:{product:04x}"), name: nodes[0].name.clone(), nodes })
+}
+
+/// Opens the interface of an unverified model that answers the headset-link
+/// read, which is the least that makes it this protocol's control interface.
+/// Only reads are made. The error says what to tell the user.
+fn open_best(nodes: &[HidrawNode]) -> Result<Headset, String> {
+    let mut denied = None;
+    for node in nodes {
+        match Headset::open(node) {
+            Ok(h) => {
+                let answers = h.probe().iter().any(|r| r.report == jbl_quantum::protocol::feature::CONNECTION && r.plausible());
+                if answers {
+                    return Ok(h);
                 }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
             }
+            Err(Error::Access(e)) => denied = Some(format!("cannot open {}: {e}", node.path.display())),
+            Err(_) => {}
         }
     }
+    Err(denied.unwrap_or_else(|| "none of the device's interfaces answered the way this software expects".into()))
+}
+
+/// The probe report for every interface of `nodes`, as one text.
+fn probe_all(nodes: &[HidrawNode]) -> String {
+    nodes
+        .iter()
+        .map(|n| Headset::probe_node(n).to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 enum Flow {
     Exit,
+    /// The choice of device changed: look again.
+    Reselect,
     Lost(Error),
 }
 
@@ -144,6 +250,13 @@ struct Worker<F: Fn()> {
     shared: Shared,
     commands: Receiver<Command>,
     repaint: F,
+    /// Serving an unverified model: it may not answer every read, and writes
+    /// need the user's permission, one feature at a time.
+    loose: Cell<bool>,
+    /// Set when the user changed whether to use the unverified model.
+    reselect: Cell<bool>,
+    /// The unverified model's interfaces, for probing.
+    nodes: RefCell<Vec<HidrawNode>>,
 }
 
 impl<F: Fn()> Worker<F> {
@@ -154,13 +267,152 @@ impl<F: Fn()> Worker<F> {
 
     fn serve(&self, h: &Headset) -> Flow {
         match self.serve_inner(h) {
-            Ok(()) => Flow::Exit,
+            Ok(flow) => flow,
             Err(e) => Flow::Lost(e),
         }
     }
 
-    /// Returns `Ok` when the UI has gone away and `Err` when the dongle has.
-    fn serve_inner(&self, h: &Headset) -> Result<(), Error> {
+    /// Waits a moment before looking for the dongle again, answering commands
+    /// meanwhile.
+    fn wait_for_retry(&self) {
+        let until = Instant::now() + REOPEN_EVERY;
+        while Instant::now() < until {
+            match self.commands.recv_timeout(EVENT_WAIT) {
+                Ok(cmd) => {
+                    self.update(|s| s.error = Some("no headset dongle is available".into()));
+                    cmd.fail(Error::NotFound);
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        }
+    }
+
+    /// An unverified model is plugged in. Shows it; if the user chose to use
+    /// it, opens it and serves it (reads freely, writes only as allowed),
+    /// otherwise just waits and answers probes.
+    fn unverified(&self, found: Found) -> Flow {
+        let choice = settings::load().unverified.get(&found.id).cloned().unwrap_or_default();
+        *self.nodes.borrow_mut() = found.nodes.clone();
+        let opened = if choice.in_use { Some(open_best(&found.nodes)) } else { None };
+        let access = match &opened {
+            Some(Err(why)) => why.clone(),
+            _ => String::new(),
+        };
+        let want = Unverified {
+            id: found.id.clone(),
+            name: found.name.clone(),
+            access,
+            in_use: choice.in_use,
+            allowed: choice.allowed.clone(),
+        };
+        let serving = matches!(opened, Some(Ok(_)));
+        let unchanged = {
+            let s = self.shared.lock().unwrap();
+            s.link == Link::Unverified && s.unverified.as_ref() == Some(&want)
+        };
+        if serving || !unchanged {
+            self.update(|s| {
+                if !serving {
+                    *s = Snapshot { link: Link::Unverified, ..Snapshot::default() };
+                }
+                s.unverified = Some(want);
+            });
+        }
+        if let Some(Ok(headset)) = opened {
+            self.loose.set(true);
+            self.reselect.set(false);
+            let flow = self.serve(&headset);
+            self.loose.set(false);
+            return flow;
+        }
+
+        // Not in use: answer probes and choices, for about a second.
+        let until = Instant::now() + REOPEN_EVERY;
+        while Instant::now() < until {
+            match self.commands.recv_timeout(EVENT_WAIT) {
+                Ok(Command::SetUnverified(in_use, allowed, reply)) => {
+                    let done = self.choose(in_use, allowed);
+                    let flow_change = done.is_ok();
+                    drop(reply.send(done));
+                    if flow_change {
+                        return Flow::Reselect;
+                    }
+                }
+                Ok(Command::Probe(reply)) => drop(reply.send(Ok(probe_all(&found.nodes)))),
+                Ok(cmd) => {
+                    let why = "this model isn't verified; choose to use it, and allow this feature, under Device";
+                    self.update(|s| s.error = Some(why.into()));
+                    cmd.fail(Error::Invalid(why.into()));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Flow::Exit,
+            }
+        }
+        Flow::Reselect
+    }
+
+    /// Saves what the user chose for the unverified model and shows it.
+    fn choose(&self, in_use: bool, allowed: Vec<String>) -> Result<(), Error> {
+        let id = self
+            .shared
+            .lock()
+            .unwrap()
+            .unverified
+            .as_ref()
+            .map(|u| u.id.clone())
+            .ok_or_else(|| Error::Invalid("no unverified model is plugged in".into()))?;
+        if let Some(bad) = allowed.iter().find(|a| !FEATURES.contains(&a.as_str())) {
+            return Err(Error::Invalid(format!("unknown feature '{bad}' (want anc, sidetone or lights)")));
+        }
+        let mut allowed = allowed;
+        allowed.sort();
+        allowed.dedup();
+        let choice = settings::UnverifiedChoice { in_use, allowed: allowed.clone() };
+        settings::update(|s| {
+            s.unverified.insert(id.clone(), choice);
+        })
+        .map_err(Error::Invalid)?;
+        let changed = self.update_get(|s| {
+            let was = s.unverified.as_ref().map(|u| u.in_use);
+            if let Some(u) = s.unverified.as_mut() {
+                u.in_use = in_use;
+                u.allowed = allowed;
+            }
+            was != Some(in_use)
+        });
+        if changed {
+            self.reselect.set(true);
+        }
+        Ok(())
+    }
+
+    /// Like [`Worker::update`], returning what `f` computed.
+    fn update_get<T>(&self, f: impl FnOnce(&mut Snapshot) -> T) -> T {
+        let out = f(&mut self.shared.lock().unwrap());
+        (self.repaint)();
+        out
+    }
+
+    /// `Some` when a write to `feature` is refused: an unverified model only
+    /// gets the writes the user allowed.
+    fn denied(&self, feature: &str) -> Option<Error> {
+        if !self.loose.get() {
+            return None;
+        }
+        let allowed = self
+            .shared
+            .lock()
+            .unwrap()
+            .unverified
+            .as_ref()
+            .is_some_and(|u| u.allowed.iter().any(|a| a == feature));
+        (!allowed).then(|| Error::Invalid(format!("{feature} isn't allowed on this unverified model; allow it under Device")))
+    }
+
+    /// Returns `Flow::Exit` when the UI has gone away, `Flow::Reselect` when
+    /// the choice of device changed and `Err` when the dongle has gone.
+    fn serve_inner(&self, h: &Headset) -> Result<Flow, Error> {
         let mut connected = h.connected()?;
         self.refresh(h, connected)?;
         let mut next_poll = Instant::now() + POLL_EVERY;
@@ -169,8 +421,11 @@ impl<F: Fn()> Worker<F> {
                 match self.commands.try_recv() {
                     Ok(cmd) => self.execute(h, cmd)?,
                     Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => return Ok(()),
+                    Err(TryRecvError::Disconnected) => return Ok(Flow::Exit),
                 }
+            }
+            if self.reselect.take() {
+                return Ok(Flow::Reselect);
             }
 
             if let Some(event) = h.next_event_timeout(EVENT_WAIT)? {
@@ -185,8 +440,11 @@ impl<F: Fn()> Worker<F> {
                     self.refresh(h, connected)?;
                 } else if connected {
                     // Sidetone has no event. Reading it has no side effects.
-                    let sidetone = h.sidetone()?;
-                    self.update(|s| s.sidetone = Some(sidetone));
+                    match h.sidetone() {
+                        Ok(sidetone) => self.update(|s| s.sidetone = Some(sidetone)),
+                        Err(e) if !self.loose.get() => return Err(e),
+                        Err(_) => {}
+                    }
                 }
             }
         }
@@ -196,7 +454,38 @@ impl<F: Fn()> Worker<F> {
     /// its last known values, which would look live, so only the identity
     /// fields are kept then.
     fn refresh(&self, h: &Headset, connected: bool) -> Result<(), Error> {
-        if connected {
+        if connected && self.loose.get() {
+            // An unverified model need not answer everything; keep what it does.
+            let (battery, anc, sidetone) = (h.battery().ok(), h.anc().ok(), h.sidetone().ok());
+            let (mic_active, dial, lights_on) = (h.mic_active().ok(), h.dial().ok(), h.lights_on().ok());
+            let (serial, firmware, device_name) = (h.serial().ok(), h.firmware().ok(), h.device_name().ok());
+            let silent: Vec<&str> = [
+                ("battery", battery.is_none()),
+                ("noise control", anc.is_none()),
+                ("sidetone", sidetone.is_none()),
+                ("microphone", mic_active.is_none()),
+                ("dial", dial.is_none()),
+                ("lights", lights_on.is_none()),
+                ("serial", serial.is_none()),
+                ("firmware", firmware.is_none()),
+            ]
+            .into_iter()
+            .filter_map(|(name, missing)| missing.then_some(name))
+            .collect();
+            self.update(|s| {
+                s.link = Link::Ready;
+                s.battery = battery;
+                s.anc = anc;
+                s.sidetone = sidetone;
+                s.mic_active = mic_active;
+                s.dial = dial;
+                s.lights_on = lights_on;
+                s.device_name = device_name.unwrap_or_default();
+                s.serial = serial.unwrap_or_default();
+                s.firmware = firmware.unwrap_or_default();
+                s.error = (!silent.is_empty()).then(|| format!("This model didn't answer: {}.", silent.join(", ")));
+            });
+        } else if connected {
             let st = h.status()?;
             self.update(|s| {
                 s.link = Link::Ready;
@@ -218,6 +507,7 @@ impl<F: Fn()> Worker<F> {
                     serial,
                     firmware,
                     error: s.error.take(),
+                    unverified: s.unverified.take(),
                     ..Snapshot::default()
                 }
             });
@@ -229,7 +519,36 @@ impl<F: Fn()> Worker<F> {
     /// Device-level failures other than a lost dongle are shown to the user
     /// and do not end the session.
     fn execute(&self, h: &Headset, cmd: Command) -> Result<(), Error> {
+        let feature = match &cmd {
+            Command::Anc(..) => Some("anc"),
+            Command::Sidetone(..) => Some("sidetone"),
+            Command::Lights(..) | Command::Lighting(..) => Some("lights"),
+            Command::Probe(_) | Command::SetUnverified(..) => None,
+        };
+        if let Some(why) = feature.and_then(|f| self.denied(f)) {
+            self.update(|s| s.error = Some(why.to_string()));
+            cmd.fail(why);
+            return Ok(());
+        }
         match cmd {
+            Command::Probe(reply) => {
+                let text = if self.loose.get() {
+                    Ok(probe_all(&self.nodes.borrow()))
+                } else {
+                    Err(Error::Invalid("this model is verified; there is nothing to probe".into()))
+                };
+                drop(reply.send(text));
+                Ok(())
+            }
+            Command::SetUnverified(in_use, allowed, reply) => {
+                let done = if self.loose.get() {
+                    self.choose(in_use, allowed)
+                } else {
+                    Err(Error::Invalid("this model is verified; there is nothing to choose".into()))
+                };
+                drop(reply.send(done));
+                Ok(())
+            }
             Command::Anc(m, reply) => {
                 self.update(|s| s.pending = Some(Pending::Anc(m)));
                 self.finish(reply, h.set_anc_confirmed(m, CONFIRM_TIMEOUT), |s, m| s.anc = Some(m))
@@ -296,5 +615,161 @@ fn apply_event(s: &mut Snapshot, event: Event) {
         Event::Battery(pct) => s.battery = Some(pct),
         Event::Dial(pos) => s.dial = Some(pos),
         Event::Bluetooth(_) | Event::Unknown { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc::channel;
+
+    fn worker(commands: Receiver<Command>, shared: Shared, loose: bool) -> Worker<impl Fn()> {
+        Worker {
+            shared,
+            commands,
+            repaint: || {},
+            loose: Cell::new(loose),
+            reselect: Cell::new(false),
+            nodes: RefCell::new(Vec::new()),
+        }
+    }
+
+    fn allowing(allowed: &[&str]) -> Shared {
+        let shared = Shared::default();
+        shared.lock().unwrap().unverified = Some(Unverified {
+            id: "0ecb:203e".into(),
+            name: "test".into(),
+            access: String::new(),
+            in_use: true,
+            allowed: allowed.iter().map(|a| a.to_string()).collect(),
+        });
+        shared
+    }
+
+    #[test]
+    fn a_verified_model_is_never_gated() {
+        let (_tx, rx) = channel();
+        let w = worker(rx, Shared::default(), false);
+        assert!(w.denied("anc").is_none());
+        assert!(w.denied("lights").is_none());
+    }
+
+    #[test]
+    fn an_unverified_model_only_gets_the_writes_that_were_allowed() {
+        let (_tx, rx) = channel();
+        let w = worker(rx, allowing(&["anc"]), true);
+        assert!(w.denied("anc").is_none());
+        assert!(w.denied("sidetone").is_some());
+        assert!(w.denied("lights").is_some());
+    }
+
+    #[test]
+    fn an_unverified_model_with_nothing_allowed_is_read_only() {
+        let (_tx, rx) = channel();
+        let w = worker(rx, allowing(&[]), true);
+        for f in FEATURES {
+            assert!(w.denied(f).is_some(), "{f}");
+        }
+    }
+
+    /// End to end on the simulated headset: a refused write never reaches it,
+    /// and the same write goes through once it is allowed.
+    #[test]
+    fn a_refused_write_is_not_sent_and_an_allowed_one_is() {
+        let shared = allowing(&[]);
+        let (tx, rx) = channel();
+        let shared_for_worker = shared.clone();
+        let thread = std::thread::spawn(move || {
+            let w = worker(rx, shared_for_worker, true);
+            let h = Headset::open_simulated();
+            matches!(w.serve(&h), Flow::Exit)
+        });
+
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Anc(Anc::On, reply)).unwrap();
+        let refused = answer.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(refused, Err(Error::Invalid(_))));
+        assert_ne!(shared.lock().unwrap().anc, Some(Anc::On));
+
+        shared.lock().unwrap().unverified.as_mut().unwrap().allowed = vec!["anc".into()];
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Anc(Anc::On, reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Ok(Anc::On)));
+        assert_eq!(shared.lock().unwrap().anc, Some(Anc::On));
+
+        drop(tx);
+        assert!(thread.join().unwrap());
+    }
+
+    #[test]
+    fn probing_a_verified_model_says_there_is_nothing_to_do() {
+        let (tx, rx) = channel();
+        let shared = Shared::default();
+        let thread = std::thread::spawn(move || {
+            let w = worker(rx, shared, false);
+            let h = Headset::open_simulated();
+            matches!(w.serve(&h), Flow::Exit)
+        });
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Probe(reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Err(Error::Invalid(_))));
+        drop(tx);
+        assert!(thread.join().unwrap());
+    }
+
+    /// An unverified model that the user hasn't chosen to use: it is shown,
+    /// probing works (and says why when the device can't be opened), and
+    /// everything else is refused without touching the device.
+    #[test]
+    fn an_unverified_model_not_in_use_only_answers_probes() {
+        let shared = Shared::default();
+        let (tx, rx) = channel();
+        let shared_for_worker = shared.clone();
+        let thread = std::thread::spawn(move || {
+            let w = worker(rx, shared_for_worker, false);
+            let found = Found {
+                // An ID no real settings file mentions, and a node that can't be opened.
+                id: "0ecb:ffff".into(),
+                name: "Test model".into(),
+                nodes: vec![HidrawNode {
+                    path: "/dev/quantumengine-test-missing".into(),
+                    vendor_id: 0x0ecb,
+                    product_id: 0xffff,
+                    name: "Test model".into(),
+                }],
+            };
+            loop {
+                if matches!(w.unverified(Found { id: found.id.clone(), name: found.name.clone(), nodes: found.nodes.clone() }), Flow::Exit) {
+                    return;
+                }
+            }
+        });
+
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Probe(reply)).unwrap();
+        let text = answer.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        assert!(text.contains("0ecb:ffff"), "{text}");
+        assert!(text.contains("Could not open"), "{text}");
+        assert!(text.contains("Verified: no"), "{text}");
+
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Anc(Anc::On, reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Err(Error::Invalid(m)) if m.contains("isn't verified")));
+
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::SetUnverified(false, vec!["bogus".into()], reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Err(Error::Invalid(m)) if m.contains("unknown feature")));
+
+        {
+            let s = shared.lock().unwrap();
+            assert_eq!(s.link, Link::Unverified);
+            let u = s.unverified.as_ref().unwrap();
+            assert_eq!(u.id, "0ecb:ffff");
+            assert!(!u.in_use);
+            assert!(u.allowed.is_empty());
+        }
+
+        drop(tx);
+        thread.join().unwrap();
     }
 }

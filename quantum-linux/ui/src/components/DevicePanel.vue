@@ -7,6 +7,7 @@ import { ExternalLink } from "lucide-vue-next";
 import { api } from "../api";
 import { useApp } from "../stores/app";
 import PanelField from "./PanelField.vue";
+import UnverifiedPanel from "./UnverifiedPanel.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
 const app = useApp();
@@ -40,6 +41,7 @@ async function openProject() {
 
 <template>
   <div class="panel">
+    <UnverifiedPanel v-if="app.state.unverified.id" />
     <PanelField title="Headset">
       <dl class="parts">
         <div v-for="r in rows" :key="r.name" class="part">
