@@ -25,11 +25,18 @@ the app, widget and CLI talk to it over D-Bus. No Windows or vendor software nee
 - Switch noise control: **Off**, **ANC** or **TalkThru**
 - Set sidetone (hearing your own voice): **Off**, **Low**, **Mid** or **High**
 - Turn the lights on or off
-- Set colours, brightness and animation for the logo and ring lighting
+- Set colours, brightness and animation for the logo and ring lighting (RGB works, but is still under development; see below)
 - Equalizer: JBL headset tuning and 19 sound profiles
 - Virtual 7.1 surround sound
 
 Auto-off timer and hardware volume aren't supported over the dongle.
+
+> **RGB lighting is still under development.** Setting colours, brightness and
+> effects on the headset works, but the app's lighting editor and the headset
+> drawing don't always show what the headset is doing. The headset can't report
+> its lighting, so the window only knows what it last applied itself. Expect
+> rough edges here, and treat what the window shows as a preview, not a
+> readout. Fixes are planned.
 
 ## Supported hardware
 

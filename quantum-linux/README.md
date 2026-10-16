@@ -21,7 +21,7 @@ the device and every command was checked on real hardware.
 | Noise control: Off / ANC / TalkThru | ✓ | ✓ |
 | Sidetone: Off / Low / Mid / High | ✓ | ✓ |
 | Lights on/off | ✓ | ✓ |
-| Lighting colours, brightness, effect (logo and ring) | ✓ | ✓ |
+| Lighting colours, brightness, effect (logo and ring), *still under development* | ✓ | ✓ |
 | Microphone live/muted, game/chat dial | ✓ (live) | ✓ |
 | Live event stream | — | ✓ `watch` |
 | Serial, firmware, paired host name | ✓ | ✓ |
@@ -103,8 +103,9 @@ moving the dial or muting the microphone shows up straight away. Below the
 drawing are four sections: Sound, Lights, EQ and Device. While a change is
 being applied, the controls are locked until the headset confirms it.
 
-The headset can't report its lighting colours, so the app remembers what you
-last applied. While you edit them, the drawing previews the colours and
+**RGB lighting is still under development.** It works, but the lighting editor
+and the drawing may not match what the headset is showing: the headset can't
+report its lighting colours, so the app remembers what you last applied. While you edit them, the drawing previews the colours and
 effect; nothing reaches the headset until you press **Apply to headset**,
 which also switches the lights on.
 
