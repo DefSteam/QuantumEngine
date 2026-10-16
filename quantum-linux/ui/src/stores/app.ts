@@ -87,6 +87,14 @@ export const useApp = defineStore("app", () => {
   const draft = ref<LightingDto | null>(null);
   const curves = ref<Record<string, number[]>>({});
   const editor = ref<EqEditor | null>(null);
+  /** The profile under the pointer in the EQ list, drawn over the curve. */
+  const eqHover = ref<string | null>(null);
+  /** The band selected in the editor, on the curve and in the table. */
+  const eqBand = ref<number | null>(null);
+  /** Wide windows keep the EQ curve beside the headset; narrow ones put it in the EQ tab. */
+  const wideQuery = window.matchMedia("(min-width: 840px)");
+  const wide = ref(wideQuery.matches);
+  wideQuery.addEventListener("change", () => (wide.value = wideQuery.matches));
 
   const headset = computed(() => state.value.headset);
   const serviceUp = computed(() => state.value.service === "up");
@@ -246,6 +254,9 @@ export const useApp = defineStore("app", () => {
     dismiss,
     curve,
     editor,
+    eqHover,
+    eqBand,
+    wide,
     openEditor,
     closeEditor,
     saveEditor,

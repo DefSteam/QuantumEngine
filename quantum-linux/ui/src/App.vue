@@ -3,6 +3,7 @@ import { computed, onMounted } from "vue";
 import { CircleAlert } from "lucide-vue-next";
 import { useApp, type Section } from "./stores/app";
 import DevicePanel from "./components/DevicePanel.vue";
+import EqDock from "./components/EqDock.vue";
 import EqPanel from "./components/EqPanel.vue";
 import HeadsetFigure from "./components/HeadsetFigure.vue";
 import LightsPanel from "./components/LightsPanel.vue";
@@ -51,6 +52,7 @@ onMounted(() => {
       <UpdateStrip />
       <StatusHeader />
       <HeadsetFigure />
+      <EqDock v-if="app.wide" />
     </div>
 
     <main class="work">
@@ -101,16 +103,16 @@ onMounted(() => {
 <style scoped>
 .layout {
   display: grid;
-  gap: 22px;
-  max-width: 560px;
+  gap: 24px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 20px var(--gutter) 0;
+  padding: 22px var(--gutter) 28px;
 }
 
 .overview {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
 }
 
 .tabs {
@@ -118,26 +120,25 @@ onMounted(() => {
   top: 0;
   z-index: 2;
   display: flex;
-  gap: 4px;
+  gap: 3px;
   margin: 0 calc(-1 * var(--gutter));
-  padding: 6px var(--gutter) 0;
-  border-bottom: 1px solid var(--line);
-  background: var(--ground);
+  padding: 5px var(--gutter);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--film);
 }
 
 .tabs button {
   position: relative;
-  height: 40px;
-  padding: 0 12px;
+  flex: 1;
+  height: 36px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
   color: var(--ink-3);
   font-weight: 500;
-  transition: color 160ms;
-}
-
-.tabs button:first-child {
-  padding-left: 0;
+  border-radius: 7px;
+  transition: color 160ms, background 160ms;
 }
 
 .tabs button:hover {
@@ -147,24 +148,12 @@ onMounted(() => {
 .tabs button.on {
   color: var(--ink);
   font-weight: 600;
-}
-
-.tabs button.on::after {
-  content: "";
-  position: absolute;
-  right: 12px;
-  bottom: -1px;
-  left: 12px;
-  height: 2px;
-  background: var(--ink);
-}
-
-.tabs button:first-child.on::after {
-  left: 0;
+  background: var(--film-raised);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 .tabs button:focus-visible {
-  outline-offset: -2px;
+  outline-offset: 1px;
   border-radius: 4px;
 }
 
@@ -172,7 +161,11 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  margin: 16px 0 0;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 124 105 / 0.24);
+  border-radius: var(--radius-sm);
+  background: rgb(255 124 105 / 0.07);
   font-size: 13px;
   color: var(--alert);
 }
@@ -243,10 +236,10 @@ onMounted(() => {
 /* Wide window: the figure stays put on the left, the work on the right. */
 @media (min-width: 840px) {
   .layout {
-    grid-template-columns: minmax(360px, 1fr) minmax(400px, 1fr);
-    gap: 40px;
-    max-width: 1080px;
-    padding-top: 28px;
+    grid-template-columns: minmax(340px, 0.86fr) minmax(400px, 1.14fr);
+    gap: clamp(32px, 4vw, 56px);
+    max-width: 1200px;
+    padding: 28px 24px 36px;
   }
 
   .overview {
@@ -257,8 +250,77 @@ onMounted(() => {
 
   .tabs {
     margin: 0;
-    padding-left: 0;
-    padding-right: 0;
+    padding: 5px;
+  }
+}
+
+/* Landscape windows have less vertical room. Keep the overview in view and
+   give the controls their own scroll area instead of scrolling the whole app. */
+@media (min-width: 840px) and (max-height: 760px) {
+  .layout {
+    grid-template-rows: minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    padding: 16px 24px;
+    gap: 24px;
+  }
+
+  .overview {
+    top: 16px;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .overview {
+    align-self: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .work {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .work .panel-host {
+    flex: 1;
+    min-height: 0;
+    margin: 0 -12px;
+    padding: 18px 12px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 839px) and (max-height: 559px) {
+  .layout {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+    align-items: start;
+    gap: 20px;
+    max-width: 1100px;
+    padding: 14px var(--gutter) 18px;
+  }
+
+  .overview {
+    gap: 12px;
+  }
+
+  .tabs {
+    margin-left: 0;
+    margin-right: 0;
+    padding-inline: 4px;
+  }
+
+  .tabs button {
+    height: 34px;
+    padding-inline: 5px;
+    font-size: 12px;
+  }
+
+  .panel-host {
+    padding-top: 16px;
   }
 }
 </style>

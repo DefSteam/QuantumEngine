@@ -9,7 +9,6 @@ import { useApp } from "../stores/app";
 import type { Band } from "../api";
 
 const app = useApp();
-const selected = defineModel<number | null>("selected", { default: null });
 
 const TYPES = [
   { value: "bell", label: "Bell" },
@@ -40,12 +39,12 @@ function hasGain(kind: string) {
 function add() {
   if (full.value) return;
   e.value.bands.push({ kind: "bell", freq: 1000, gain: 0, q: 1 });
-  selected.value = e.value.bands.length - 1;
+  app.eqBand = e.value.bands.length - 1;
 }
 
 function remove(i: number) {
   e.value.bands.splice(i, 1);
-  selected.value = null;
+  app.eqBand = null;
 }
 </script>
 
@@ -76,10 +75,10 @@ function remove(i: number) {
         v-for="(b, i) in e.bands"
         :key="i"
         class="row"
-        :class="{ on: selected === i, bad: !!problem(b) }"
+        :class="{ on: app.eqBand === i, bad: !!problem(b) }"
         role="row"
-        @focusin="selected = i"
-        @click="selected = i"
+        @focusin="app.eqBand = i"
+        @click="app.eqBand = i"
       >
         <span class="index num">{{ i + 1 }}</span>
         <select v-model="b.kind" :aria-label="`Band ${i + 1} type`">

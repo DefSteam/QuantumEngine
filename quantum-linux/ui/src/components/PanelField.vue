@@ -6,17 +6,13 @@ defineProps<{
   title: string;
   reading?: string;
   hint?: string;
-  /** The part number of this setting on Fig. 1, when it has one. */
-  part?: number;
 }>();
 </script>
 
 <template>
   <section class="field">
     <div class="head">
-      <h3>
-        <span v-if="part" class="key num" :aria-label="`Part ${part}`">{{ part }}</span>{{ title }}
-      </h3>
+      <h3>{{ title }}</h3>
       <slot name="aside">
         <span v-if="reading" class="reading num">{{ reading }}</span>
       </slot>
@@ -34,7 +30,9 @@ defineProps<{
 }
 
 .field + .field {
-  margin-top: 26px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .head {
@@ -51,21 +49,8 @@ h3 {
   gap: 8px;
   margin: 0;
   font-size: 14px;
+  letter-spacing: 0.005em;
   font-weight: 600;
-}
-
-/* Matches the part numbers on Fig. 1's callouts. */
-.key {
-  display: inline-grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--ink-2);
 }
 
 .reading {

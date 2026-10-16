@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { CircleAlert, FileUp, Pencil, Plus } from "lucide-vue-next";
-import { api } from "../api";
+import { computed } from "vue";
+import { FileUp, Pencil, Plus } from "lucide-vue-next";
 import { useApp } from "../stores/app";
-import EqCurve, { type Handle } from "./EqCurve.vue";
+import EqDock from "./EqDock.vue";
 import EqEditor from "./EqEditor.vue";
 import PanelField from "./PanelField.vue";
 import SegmentedControl from "./SegmentedControl.vue";
-import ToggleSwitch from "./ToggleSwitch.vue";
 
 const app = useApp();
 
@@ -21,8 +19,6 @@ const GENERAL = new Set(["Flat", "Bass Boost", "Cinematic", "FPS", "MOBA", "RPG"
 
 const eq = computed(() => app.state.eq);
 const usable = computed(() => app.serviceUp && eq.value.profiles.length > 0);
-/** On as far as anyone can tell: the service runs the EQ, so it's off when that's down. */
-const on = computed(() => app.serviceUp && eq.value.enabled);
 const busy = computed(() => app.pending !== null);
 
 const groups = computed(() => {
@@ -33,83 +29,7 @@ const groups = computed(() => {
   ];
 });
 
-// Editing a custom profile: the curve follows the draft, and while the EQ
-// is on the draft plays too (both a moment after the last change).
 const editing = computed(() => app.editor !== null);
-const selectedBand = ref<number | null>(null);
-const editorPoints = ref<number[] | null>(null);
-const handles = computed<Handle[] | undefined>(() =>
-  app.editor?.bands.map((b) => ({ freq: b.freq, gain: b.gain, hasGain: b.kind !== "highpass" && b.kind !== "lowpass" })),
-);
-let pause: number | undefined;
-
-function draftValid(): boolean {
-  return !!app.editor?.bands.every(
-    (b) => b.freq >= 10 && b.freq <= 20000 && Math.abs(b.gain) <= 30 && b.q >= 0.05 && b.q <= 20,
-  );
-}
-
-watch(
-  () => app.editor && JSON.stringify(app.editor.bands),
-  (draft) => {
-    window.clearTimeout(pause);
-    if (!draft) {
-      editorPoints.value = null;
-      selectedBand.value = null;
-      return;
-    }
-    pause = window.setTimeout(async () => {
-      const e = app.editor;
-      if (!e || !draftValid()) return;
-      const bands = e.bands.map((b) => ({ ...b }));
-      try {
-        editorPoints.value = await api.eqBandsResponse(bands, eq.value.correction);
-        if (on.value) await api.previewEqBands(bands);
-      } catch (err) {
-        app.toast(err instanceof Error ? err.message : String(err));
-      }
-    }, 120);
-  },
-  { immediate: true },
-);
-
-function dragBand(i: number, freq: number, gain: number) {
-  const b = app.editor?.bands[i];
-  if (!b) return;
-  b.freq = freq;
-  if (handles.value?.[i]?.hasGain) b.gain = gain;
-}
-
-const points = ref<number[] | null>(null);
-const preview = ref<number[] | null>(null);
-const previewing = ref<string | null>(null);
-
-watch(
-  () => [eq.value.profile, eq.value.correction] as const,
-  async ([profile, correction]) => {
-    if (!profile || !correction) return;
-    try {
-      points.value = await app.curve(profile, correction);
-    } catch {
-      points.value = null;
-    }
-  },
-  { immediate: true },
-);
-
-async function showPreview(profile: string | null) {
-  previewing.value = profile;
-  if (!profile || profile === eq.value.profile) {
-    preview.value = null;
-    return;
-  }
-  try {
-    const curve = await app.curve(profile, eq.value.correction);
-    if (previewing.value === profile) preview.value = curve;
-  } catch {
-    preview.value = null;
-  }
-}
 
 function pendingOf(prefix: string): string | null {
   const p = app.pending;
@@ -121,50 +41,13 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
 
 <template>
   <div class="panel">
-    <PanelField title="Equalizer" hint="Applied on this PC to the headset's game audio. Chat is left alone.">
-      <template #aside>
-        <ToggleSwitch
-          label="Equalizer"
-          :checked="on"
-          :pending="pendingOf('eq') !== null"
-          :disabled="!usable || busy"
-          @toggle="app.setEqEnabled"
-        />
-      </template>
-      <div class="plot">
-        <EqCurve
-          :freqs="app.info.eqFrequencies"
-          :points="editing ? editorPoints : points"
-          :preview="editing ? null : preview"
-          :active="on"
-          :handles="handles"
-          :selected="selectedBand"
-          @drag="dragBand"
-          @select="selectedBand = $event"
-        />
-        <p class="plot-note">
-          <template v-if="editing">
-            <span class="swatch-line violet" />{{ app.editor?.name || "New profile" }}, editing
-          </template>
-          <template v-else-if="previewing && previewing !== eq.profile && preview">
-            <span class="swatch-line violet" />{{ previewing }}, preview
-          </template>
-          <template v-else-if="app.state.serviceOutdated && !eq.profiles.length">
-            The background service running now is too old for the EQ; restart it above
-          </template>
-          <template v-else-if="on">{{ eq.profile }} with {{ CORRECTIONS.find((c) => c.value === eq.correction)?.label ?? "no" }} tuning</template>
-          <template v-else-if="app.serviceUp">Off: the sound passes through unchanged</template>
-          <template v-else>Off: the background service isn't running</template>
-        </p>
-      </div>
-      <p v-if="eq.status" class="status"><CircleAlert :size="15" :stroke-width="1.75" />{{ eq.status }}</p>
-    </PanelField>
+    <EqDock v-if="!app.wide" />
 
-    <EqEditor v-if="editing" v-model:selected="selectedBand" class="editor-block" />
+    <EqEditor v-if="editing" class="editor-block" />
     <PanelField v-else title="Profile" :reading="eq.profile">
       <div v-for="g in groups" :key="g.name" class="group">
         <h4>{{ g.name }}</h4>
-        <div class="profiles" role="radiogroup" :aria-label="`${g.name} profiles`" @mouseleave="showPreview(null)">
+        <div class="profiles" role="radiogroup" :aria-label="`${g.name} profiles`" @mouseleave="app.eqHover = null">
           <button
             v-for="p in g.profiles"
             :key="p"
@@ -174,9 +57,9 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
             :aria-checked="p === eq.profile"
             :class="{ on: p === eq.profile, pending: p === pendingProfile }"
             :disabled="!usable || busy"
-            @mouseenter="showPreview(p)"
-            @focus="showPreview(p)"
-            @blur="showPreview(null)"
+            @mouseenter="app.eqHover = p"
+            @focus="app.eqHover = p"
+            @blur="app.eqHover = null"
             @click="p !== eq.profile && app.setEqProfile(p)"
           >
             <span class="mark" aria-hidden="true" />{{ p }}
@@ -207,7 +90,7 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
             </button>
           </div>
         </div>
-        <div v-if="eq.custom.length" class="profiles mine" role="radiogroup" aria-label="Your profiles" @mouseleave="showPreview(null)">
+        <div v-if="eq.custom.length" class="profiles mine" role="radiogroup" aria-label="Your profiles" @mouseleave="app.eqHover = null">
           <div v-for="p in eq.custom" :key="p" class="mine-row">
             <button
               type="button"
@@ -216,9 +99,9 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
               :aria-checked="p === eq.profile"
               :class="{ on: p === eq.profile, pending: p === pendingProfile }"
               :disabled="!usable || busy"
-              @mouseenter="showPreview(p)"
-              @focus="showPreview(p)"
-              @blur="showPreview(null)"
+              @mouseenter="app.eqHover = p"
+              @focus="app.eqHover = p"
+              @blur="app.eqHover = null"
               @click="p !== eq.profile && app.setEqProfile(p)"
             >
               <span class="mark" aria-hidden="true" />{{ p }}
@@ -261,46 +144,6 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
 </template>
 
 <style scoped>
-.plot {
-  padding: 12px 12px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--film);
-}
-
-.plot-note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-
-.swatch-line {
-  width: 14px;
-  height: 2px;
-  border-radius: 2px;
-}
-
-.swatch-line.violet {
-  background: var(--violet);
-}
-
-.status {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  margin: 0;
-  font-size: 13px;
-  color: var(--alert);
-}
-
-.status svg {
-  flex: none;
-  margin-top: 1px;
-}
-
 .group + .group {
   margin-top: 6px;
 }
