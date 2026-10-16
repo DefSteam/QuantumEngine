@@ -27,6 +27,14 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # Build from the repository that received the tag. This matters for
+      # forks: the PKGBUILD's default URL points at the upstream project.
+      - name: Point the PKGBUILD at this repository
+        shell: bash
+        run: |
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          sed -i "s|^url=.*|url=\"$repo_url\"|" quantum-linux/packaging/PKGBUILD
+
       - name: Check the tag matches the version
         shell: bash
         run: |

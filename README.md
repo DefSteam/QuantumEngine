@@ -35,6 +35,17 @@ overview beside the controls, while compact layouts stack the content. The EQ
 view keeps its curve and enable control visible alongside the headset on wide
 windows, with presets in their own section.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/QE_Sound.png" width="48%" alt="QuantumEngine Sound tab">
+  <img src="screenshots/QE_EQ.png" width="48%" alt="QuantumEngine EQ tab">
+</p>
+
+<p align="center">
+  <img src="screenshots/QE_Widget.png" width="38%" alt="QuantumEngine KDE Plasma widget">
+</p>
+
 The dongle doesn't expose the headset's hardware volume or auto-off timer. Use
 the desktop's system mixer for playback volume. If the mixer slider moves but
 playback loudness doesn't change, see the [WirePlumber volume workaround](quantum-linux/README.md#system-volume-slider-moves-but-loudness-does-not).
