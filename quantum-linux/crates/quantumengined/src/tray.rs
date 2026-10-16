@@ -9,7 +9,7 @@
 //! prompt ksni to call the render methods below again and diff the result.
 
 use crate::device::{self, Link, Shared, Snapshot};
-use crate::eq::{self, profiles::{Correction, PROFILES}};
+use crate::eq::{self, profiles::Correction};
 use crate::surround;
 use crate::update;
 use jbl_quantum::Anc;
@@ -156,6 +156,7 @@ impl ksni::Tray for QuantumTray {
 }
 
 fn eq_menu(state: &eq::State) -> MenuItem<QuantumTray> {
+    let names = state.profile_names();
     let label = if state.enabled { format!("Equalizer: {}", state.profile) } else { "Equalizer: off".into() };
     let mut submenu = vec![
         CheckmarkItem {
@@ -175,11 +176,13 @@ fn eq_menu(state: &eq::State) -> MenuItem<QuantumTray> {
     submenu.push(MenuItem::Separator);
     submenu.push(
         RadioGroup {
-            selected: PROFILES.iter().position(|p| p.name == state.profile).unwrap_or(0),
+            selected: names.iter().position(|p| *p == state.profile).unwrap_or(0),
             select: Box::new(|this: &mut QuantumTray, index| {
-                this.eq.send(eq::Command::Profile(PROFILES[index].name.into(), eq::no_reply()));
+                if let Some(name) = this.eq.state().profile_names().get(index) {
+                    this.eq.send(eq::Command::Profile(name.clone(), eq::no_reply()));
+                }
             }),
-            options: PROFILES.iter().map(|p| RadioItem { label: p.name.into(), ..Default::default() }).collect(),
+            options: names.iter().map(|p| RadioItem { label: p.clone(), ..Default::default() }).collect(),
         }
         .into(),
     );

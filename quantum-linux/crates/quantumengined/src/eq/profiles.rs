@@ -55,7 +55,8 @@ pub fn find(name: &str) -> Option<&'static Profile> {
     PROFILES.iter().find(|p| normalise(p.name) == key)
 }
 
-fn normalise(s: &str) -> String {
+/// The key names are compared by: lowercase letters and digits only.
+pub fn normalise(s: &str) -> String {
     s.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_lowercase()).collect()
 }
 

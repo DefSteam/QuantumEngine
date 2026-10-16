@@ -29,6 +29,25 @@ export const commands = {
 	 *  `InfoDto::eq_frequencies`.
 	 */
 	eqResponse: (profile: string, correction: string) => typedError<(number | null)[], string>(__TAURI_INVOKE("eq_response", { profile, correction })),
+	/**  A profile's bands, built-in or custom. */
+	eqProfileBands: (name: string) => typedError<BandDto[], string>(__TAURI_INVOKE("eq_profile_bands", { name })),
+	/**  The curve of unsaved bands, like `eq_response`. */
+	eqBandsResponse: (bands: BandDto[], correction: string) => typedError<(number | null)[], string>(__TAURI_INVOKE("eq_bands_response", { bands, correction })),
+	/**
+	 *  Saves a custom profile and selects it; `original` is the one being
+	 *  edited, or empty for a new one. Returns the saved name.
+	 */
+	saveEqProfile: (original: string, name: string, bands: BandDto[]) => typedError<string, string>(__TAURI_INVOKE("save_eq_profile", { original, name, bands })),
+	deleteEqProfile: (name: string) => typedError<null, string>(__TAURI_INVOKE("delete_eq_profile", { name })),
+	/**  Plays unsaved bands until `end_eq_preview`, a save or a profile change. */
+	previewEqBands: (bands: BandDto[]) => typedError<null, string>(__TAURI_INVOKE("preview_eq_bands", { bands })),
+	endEqPreview: () => typedError<null, string>(__TAURI_INVOKE("end_eq_preview")),
+	/**
+	 *  Asks for an AutoEQ / Equalizer APO `ParametricEQ.txt` or an EasyEffects
+	 *  preset and adds it as a profile. Returns its name, or `None` if the user
+	 *  cancelled.
+	 */
+	importEqProfile: () => typedError<string | null, string>(__TAURI_INVOKE("import_eq_profile")),
 	/**  Virtual 7.1 surround; on also makes it the default output. */
 	setSurroundEnabled: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_surround_enabled", { enabled })),
 	/**  Returns the newer version, or empty when up to date. */
@@ -53,6 +72,16 @@ export const events = {
 };
 
 /* Types */
+/**  One EQ band. */
+export type BandDto = {
+	/**  `"bell"` | `"lowshelf"` | `"highshelf"` | `"highpass"` | `"lowpass"`. */
+	kind: string,
+	freq: number | null,
+	/**  dB; ignored by the pass filters. */
+	gain: number | null,
+	q: number | null,
+};
+
 export type EffectDto = {
 	id: number,
 	/**  Human-readable, e.g. `Chase strobe logo`. */
@@ -67,6 +96,10 @@ export type EqDto = {
 	correction: string,
 	/**  Why the EQ isn't working, or empty. */
 	status: string,
+	/**  The user's own profiles (also in `profiles`, after the built-in ones). */
+	custom: string[],
+	/**  Unsaved bands are playing instead of `profile`. */
+	previewing: boolean,
 };
 
 /**
@@ -106,6 +139,8 @@ export type InfoDto = {
 	maxColours: number,
 	/**  The frequencies, in Hz, of each point `eq_response` returns. */
 	eqFrequencies: (number | null)[],
+	/**  The most bands a custom EQ profile can have. */
+	eqMaxBands: number,
 };
 
 export type LightingDto = {

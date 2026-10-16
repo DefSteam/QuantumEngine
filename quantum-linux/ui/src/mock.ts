@@ -2,7 +2,8 @@
 // (`npm run dev`, then open http://localhost:1420/?scenario=ready). Only
 // loaded by the dev server outside Tauri; see main.ts. The data is made up.
 //
-// Scenarios: ready, update, outdated, low, off, nodongle, noaccess, down.
+// Scenarios: ready, custom, update, outdated, low, off, nodongle, noaccess, down.
+// `&editor` opens the EQ profile editor on the selected profile.
 // Add `&section=lights|eq|device` to open another section.
 
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -60,8 +61,16 @@ function scenarioState(scenario: string): StateDto {
     },
     eq:
       scenario === "outdated"
-        ? { enabled: false, profile: "", profiles: [], correction: "", status: "" }
-        : { enabled: true, profile: "CS2", profiles: PROFILES, correction: "stereo", status: "" },
+        ? { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false }
+        : {
+            enabled: true,
+            profile: scenario === "custom" ? "Night Curve" : "CS2",
+            profiles: [...PROFILES, "Night Curve"],
+            correction: "stereo",
+            status: "",
+            custom: ["Night Curve"],
+            previewing: false,
+          },
     surround: { enabled: false, status: "" },
     update: {
       serviceVersion: scenario === "outdated" ? "" : "0.3.0",
@@ -88,7 +97,28 @@ export function installMock(scenario: string) {
     ].map(([id, label]) => ({ id: id as number, label: label as string })),
     maxColours: 5,
     eqFrequencies: FREQS,
+    eqMaxBands: 18,
   };
+  type MockBand = { kind: string; freq: number; gain: number; q: number };
+  const custom: Record<string, MockBand[]> = {
+    "Night Curve": [
+      { kind: "lowshelf", freq: 105, gain: -4, q: 0.7 },
+      { kind: "bell", freq: 2900, gain: 3, q: 2.7 },
+      { kind: "highshelf", freq: 9000, gain: -3, q: 0.7 },
+      { kind: "highpass", freq: 25, gain: 0, q: 0.7 },
+    ],
+  };
+  const bandsCurve = (bands: MockBand[]) =>
+    FREQS.map((f) =>
+      bands.reduce((sum, b) => {
+        const oct = Math.log2(f / b.freq);
+        if (b.kind === "bell") return sum + b.gain * Math.exp(-((oct * b.q) ** 2));
+        if (b.kind === "lowshelf") return sum + b.gain / (1 + Math.exp(oct * 4));
+        if (b.kind === "highshelf") return sum + b.gain / (1 + Math.exp(-oct * 4));
+        if (b.kind === "highpass") return sum + Math.min(0, 12 * oct);
+        return sum + Math.min(0, -12 * oct);
+      }, 0),
+    );
 
   const change = (f: (s: StateDto) => void, delay = 650) =>
     new Promise<void>((resolve) => {
@@ -136,7 +166,44 @@ export function installMock(scenario: string) {
         case "set_surround_enabled":
           await change((s) => (s.surround.enabled = a.enabled as boolean), 500);
           return a.enabled;
+        case "eq_profile_bands": {
+          const name = a.name as string;
+          if (custom[name]) return custom[name];
+          const gains = [-6, -4, -3, -2, 2, 3, 4, 4, 3, 0];
+          return [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000].map((freq, i) => ({ kind: "bell", freq, gain: gains[i], q: 1 }));
+        }
+        case "eq_bands_response":
+          return bandsCurve(a.bands as MockBand[]);
+        case "save_eq_profile": {
+          const name = a.name as string;
+          if (a.original && a.original !== name) delete custom[a.original as string];
+          custom[name] = a.bands as MockBand[];
+          await change((s) => {
+            s.eq.custom = Object.keys(custom);
+            s.eq.profiles = [...PROFILES, ...s.eq.custom];
+            s.eq.profile = name;
+            s.eq.previewing = false;
+          }, 300);
+          return name;
+        }
+        case "delete_eq_profile":
+          delete custom[a.name as string];
+          await change((s) => {
+            s.eq.custom = Object.keys(custom);
+            s.eq.profiles = [...PROFILES, ...s.eq.custom];
+            if (s.eq.profile === a.name) s.eq.profile = "Flat";
+          }, 300);
+          return null;
+        case "preview_eq_bands":
+          if (!state.eq.previewing) await change((s) => (s.eq.previewing = true), 50);
+          return null;
+        case "end_eq_preview":
+          await change((s) => (s.eq.previewing = false), 50);
+          return null;
+        case "import_eq_profile":
+          return null;
         case "eq_response":
+          if (custom[a.profile as string]) return bandsCurve(custom[a.profile as string]!);
           return curve(a.profile as string, a.correction as string);
         case "check_for_updates":
           await change((s) => (s.update.status = "QuantumEngine 0.3.0 is up to date"), 900);

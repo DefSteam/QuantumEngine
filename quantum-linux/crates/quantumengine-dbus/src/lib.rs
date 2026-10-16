@@ -51,6 +51,14 @@ pub fn eq_response_freq(i: usize) -> f64 {
     20.0 * 1000f64.powf(t)
 }
 
+/// One EQ band, as `(type, frequency in Hz, gain in dB, Q)`. The type is
+/// `"bell"`, `"lowshelf"`, `"highshelf"`, `"highpass"` or `"lowpass"`; the
+/// pass filters ignore the gain.
+pub type EqBand = (String, f64, f64, f64);
+
+/// The most bands a custom EQ profile can have.
+pub const EQ_MAX_BANDS: usize = 18;
+
 /// One lighting zone, for [`HeadsetProxy::set_lighting`]. Mirrors
 /// `jbl_quantum::ZoneLighting`, but this crate never depends on that crate —
 /// the service converts each side.
@@ -155,9 +163,19 @@ pub trait Headset {
     #[zbus(property)]
     fn eq_profile(&self) -> zbus::Result<String>;
 
-    /// Every built-in profile name, in display order, `"Flat"` first.
+    /// Every profile name in display order: the built-in ones (`"Flat"`
+    /// first), then the user's own.
     #[zbus(property)]
     fn eq_profiles(&self) -> zbus::Result<Vec<String>>;
+
+    /// The names of the user's own profiles, in the order they were made.
+    #[zbus(property)]
+    fn eq_custom_profiles(&self) -> zbus::Result<Vec<String>>;
+
+    /// Whether unsaved bands (see [`preview_eq_bands`](Self::preview_eq_bands))
+    /// are playing instead of the selected profile.
+    #[zbus(property)]
+    fn eq_previewing(&self) -> zbus::Result<bool>;
 
     /// JBL's headset correction under the profile: `"off"` | `"stereo"` |
     /// `"surround"`.
@@ -181,6 +199,36 @@ pub trait Headset {
     /// drawing the curve. It is the curve's shape: the overall turn-down that
     /// keeps a boosting curve from clipping is left out.
     fn eq_response(&self, profile: &str, correction: &str) -> zbus::Result<Vec<f64>>;
+
+    /// A profile's bands, built-in or custom, by name.
+    fn eq_profile_bands(&self, name: &str) -> zbus::Result<Vec<EqBand>>;
+
+    /// What [`eq_response`](Self::eq_response) gives for a profile, for
+    /// bands that aren't saved yet (an editor's curve).
+    fn eq_bands_response(&self, bands: Vec<EqBand>, correction: &str) -> zbus::Result<Vec<f64>>;
+
+    /// Saves a custom profile and selects it. `original` is the custom
+    /// profile being edited (which this may rename), or empty to add a new
+    /// one. Returns the saved name. Fails if the name is taken, or a band is
+    /// out of range (10 Hz to 20 kHz, ±30 dB, Q 0.05 to 20; at most
+    /// [`EQ_MAX_BANDS`]).
+    fn save_eq_profile(&self, original: &str, name: &str, bands: Vec<EqBand>) -> zbus::Result<String>;
+
+    /// Deletes a custom profile; if it was selected, `"Flat"` is selected.
+    fn delete_eq_profile(&self, name: &str) -> zbus::Result<()>;
+
+    /// Plays `bands` in place of the selected profile, so an editor's
+    /// changes can be heard before saving. Ends with
+    /// [`end_eq_preview`](Self::end_eq_preview), a save, or selecting a
+    /// profile.
+    fn preview_eq_bands(&self, bands: Vec<EqBand>) -> zbus::Result<()>;
+
+    fn end_eq_preview(&self) -> zbus::Result<()>;
+
+    /// Adds a custom profile from Equalizer APO / AutoEQ `ParametricEQ.txt`
+    /// text or an EasyEffects preset (JSON), named `name` (or `name 2`... if
+    /// taken), and selects it. Returns the name it was saved under.
+    fn import_eq_profile(&self, name: &str, text: &str) -> zbus::Result<String>;
 
     // Virtual 7.1 surround: a PipeWire sink that renders eight channels
     // binaurally for the headset. Turning it on makes it the default output.

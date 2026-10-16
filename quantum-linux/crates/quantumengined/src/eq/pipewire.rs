@@ -17,7 +17,8 @@ use crate::pwgraph::{node_id, quoted, Graph};
 use std::fmt::Write as _;
 use std::process::{Command, Stdio};
 
-pub const SLOTS: usize = 16;
+/// Up to 18 bands of a custom profile, 5 of JBL's tuning, and the turn-down.
+pub const SLOTS: usize = 24;
 /// The filter runs at a fixed rate so the coefficients computed for it are
 /// right; PipeWire resamples around it if the graph runs at another rate.
 pub const RATE: f64 = 48_000.0;

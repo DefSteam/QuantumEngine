@@ -54,11 +54,12 @@ suggest otherwise.
 - The game/chat dial and mic boom are physical and read-only.
 - The EQ runs on the PC (PipeWire) and works with the headset off: on/off, one
   of 19 profiles, headset tuning Off / JBL stereo / JBL surround. Profiles were
-  extracted by alessandromrc; that credit must stay visible.
+  extracted by alessandromrc and tested by DefSteam; both are credited in the
+  README and the profile source (not in the window).
 - Updates: daily GitHub check, install via pacman with a password prompt.
 - Not available on this headset over the dongle: spatial sound, auto-off,
   charging state, volume. Never show controls for them.
-- Default window 440×800, minimum 360×520, resizable; two columns from 840px
+- Default window 1100×740 (landscape, two columns), minimum 360×520, resizable; two columns from 840px
   wide.
 
 ## Brand Commitments

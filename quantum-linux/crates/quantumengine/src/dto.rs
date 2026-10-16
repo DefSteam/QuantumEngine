@@ -79,6 +79,22 @@ pub struct EqDto {
     pub correction: String,
     /// Why the EQ isn't working, or empty.
     pub status: String,
+    /// The user's own profiles (also in `profiles`, after the built-in ones).
+    pub custom: Vec<String>,
+    /// Unsaved bands are playing instead of `profile`.
+    pub previewing: bool,
+}
+
+/// One EQ band.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BandDto {
+    /// `"bell"` | `"lowshelf"` | `"highshelf"` | `"highpass"` | `"lowpass"`.
+    pub kind: String,
+    pub freq: f64,
+    /// dB; ignored by the pass filters.
+    pub gain: f64,
+    pub q: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -123,6 +139,8 @@ impl Default for StateDto {
                 profiles: Vec::new(),
                 correction: String::new(),
                 status: String::new(),
+                custom: Vec::new(),
+                previewing: false,
             },
             surround: SurroundDto { enabled: false, status: String::new() },
             update: UpdateDto {
@@ -178,4 +196,6 @@ pub struct InfoDto {
     pub max_colours: u32,
     /// The frequencies, in Hz, of each point `eq_response` returns.
     pub eq_frequencies: Vec<f64>,
+    /// The most bands a custom EQ profile can have.
+    pub eq_max_bands: u32,
 }

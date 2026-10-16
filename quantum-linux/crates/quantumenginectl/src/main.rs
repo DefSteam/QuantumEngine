@@ -34,6 +34,10 @@ COMMANDS:
     eq list                     list the EQ profiles
     eq tuning [off|stereo|surround]
                                 JBL's headset tuning under the profile
+    eq import <file> [name]     add a profile from an AutoEQ / Equalizer APO
+                                ParametricEQ.txt or an EasyEffects preset
+    eq bands [profile]          list a profile's bands (default: current)
+    eq delete <profile>         delete one of your own profiles
     surround [on|off]           show or set virtual 7.1 surround
     update                      check GitHub for a newer release
     update install              install it (asks for your password)
@@ -373,8 +377,47 @@ fn cmd_eq(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -> Result
                 let names: Vec<String> = eq.profiles.iter().map(|p| format!("\"{}\"", escape(p))).collect();
                 println!("[{}]", names.join(","));
             } else {
+                let custom = proxy.eq_custom_profiles().map_err(dbus_err)?;
                 for p in &eq.profiles {
-                    println!("{} {p}", if *p == eq.profile { "*" } else { " " });
+                    let mine = if custom.contains(p) { "  (yours)" } else { "" };
+                    println!("{} {p}{mine}", if *p == eq.profile { "*" } else { " " });
+                }
+            }
+            return Ok(());
+        }
+        Some("import") => {
+            let file = params.get(1).ok_or("eq import needs a file")?;
+            let text = std::fs::read_to_string(file).map_err(|e| format!("cannot read {file}: {e}"))?;
+            let name = match params.get(2..).filter(|rest| !rest.is_empty()) {
+                Some(rest) => rest.join(" "),
+                None => std::path::Path::new(file)
+                    .file_stem()
+                    .map_or_else(|| "Imported".into(), |s| s.to_string_lossy().replace(['_', '-'], " ")),
+            };
+            let saved = proxy.import_eq_profile(&name, &text).map_err(dbus_err)?;
+            if !json {
+                println!("imported as \"{saved}\"");
+            }
+        }
+        Some("delete") => {
+            let name = params[1..].join(" ");
+            if name.is_empty() {
+                return Err("eq delete needs a profile name".into());
+            }
+            proxy.delete_eq_profile(&name).map_err(dbus_err)?;
+        }
+        Some("bands") => {
+            let name = if params.len() > 1 { params[1..].join(" ") } else { proxy.eq_profile().map_err(dbus_err)? };
+            let bands = proxy.eq_profile_bands(&name).map_err(dbus_err)?;
+            if json {
+                let items: Vec<String> = bands
+                    .iter()
+                    .map(|(t, f, g, q)| format!("{{\"type\":\"{t}\",\"freq\":{f},\"gain\":{g},\"q\":{q}}}"))
+                    .collect();
+                println!("[{}]", items.join(","));
+            } else {
+                for (i, (t, f, g, q)) in bands.iter().enumerate() {
+                    println!("{:>2}  {t:<9} {f:>8.1} Hz  {g:>+6.1} dB  Q {q:.2}", i + 1);
                 }
             }
             return Ok(());

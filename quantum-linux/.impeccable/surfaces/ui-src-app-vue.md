@@ -7,7 +7,7 @@ related_targets: []
 
 ## Scope
 
-The QuantumEngine desktop window (Tauri 2 + Vue, WebKitGTK), default 440×800, minimum 360×520. Mode: Operate. Opened occasionally for lighting, EQ, updates and details; quick toggles live in the tray and Plasma widget. User brief: "modern, yet beautiful and dark".
+The QuantumEngine desktop window (Tauri 2 + Vue, WebKitGTK), default 1100×740 (landscape), minimum 360×520. Mode: Operate. Opened occasionally for lighting, EQ, updates and details; quick toggles live in the tray and Plasma widget. User brief: "modern, yet beautiful and dark".
 
 ## Direction contract
 

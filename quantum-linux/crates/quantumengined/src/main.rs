@@ -7,6 +7,7 @@
 //! clients of it. It used to be `quantumengine --tray`, which still starts
 //! it.
 
+mod brir;
 mod dbus_service;
 mod device;
 mod eq;
@@ -47,7 +48,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (commands, command_rx) = std::sync::mpsc::channel();
     let notifier = notifier::Notifier::default();
     let eq = eq::spawn(notifier.clone());
-    let surround = surround::spawn(notifier.clone());
+    let surround = surround::spawn(notifier.clone(), eq.clone());
     let updater = update::spawn(notifier.clone());
 
     let dbus_refresh = dbus_service::serve(

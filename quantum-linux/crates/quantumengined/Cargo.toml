@@ -21,3 +21,5 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 notify-rust = "4"
 serde_json = "1"
 libc = "0.2"
+# The FFTs behind virtual surround's head-model correction (`brir.rs`).
+rustfft = "6"

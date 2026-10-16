@@ -31,6 +31,13 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::set_eq_profile,
             commands::set_eq_correction,
             commands::eq_response,
+            commands::eq_profile_bands,
+            commands::eq_bands_response,
+            commands::save_eq_profile,
+            commands::delete_eq_profile,
+            commands::preview_eq_bands,
+            commands::end_eq_preview,
+            commands::import_eq_profile,
             commands::set_surround_enabled,
             commands::check_for_updates,
             commands::install_update,
@@ -60,6 +67,18 @@ fn main() {
                 drop(window.set_focus());
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        // Size, position and maximized only: never restore a hidden or
+        // undecorated window.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .manage(Arc::clone(&link))
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {

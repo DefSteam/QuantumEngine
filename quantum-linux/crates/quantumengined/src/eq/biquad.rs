@@ -3,16 +3,48 @@
 //! service can hand PipeWire raw coefficients and work out how much headroom a
 //! curve needs.
 
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FilterType {
     Bell,
     LowShelf,
     HighShelf,
+    /// Cuts below `freq`; `gain_db` is ignored.
+    HighPass,
+    /// Cuts above `freq`; `gain_db` is ignored.
+    LowPass,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+impl FilterType {
+    pub const ALL: [FilterType; 5] =
+        [FilterType::Bell, FilterType::LowShelf, FilterType::HighShelf, FilterType::HighPass, FilterType::LowPass];
+
+    /// The name used on D-Bus and in settings: `bell`, `lowshelf`,
+    /// `highshelf`, `highpass` or `lowpass`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FilterType::Bell => "bell",
+            FilterType::LowShelf => "lowshelf",
+            FilterType::HighShelf => "highshelf",
+            FilterType::HighPass => "highpass",
+            FilterType::LowPass => "lowpass",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.as_str() == s)
+    }
+
+    /// Whether the filter has a gain at all (pass filters only cut).
+    pub fn has_gain(self) -> bool {
+        !matches!(self, FilterType::HighPass | FilterType::LowPass)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Band {
     pub kind: FilterType,
     pub freq: f64,
@@ -71,6 +103,22 @@ impl Coefficients {
                 2.0 * ((a - 1.0) - (a + 1.0) * cos),
                 (a + 1.0) - (a - 1.0) * cos - sqrt_a_alpha,
             ),
+            FilterType::HighPass => (
+                (1.0 + cos) / 2.0,
+                -(1.0 + cos),
+                (1.0 + cos) / 2.0,
+                1.0 + alpha,
+                -2.0 * cos,
+                1.0 - alpha,
+            ),
+            FilterType::LowPass => (
+                (1.0 - cos) / 2.0,
+                1.0 - cos,
+                (1.0 - cos) / 2.0,
+                1.0 + alpha,
+                -2.0 * cos,
+                1.0 - alpha,
+            ),
         };
         Self { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
     }
@@ -125,6 +173,24 @@ mod tests {
     fn identity_is_flat() {
         for f in [20.0, 1_000.0, 19_000.0] {
             assert!(close(Coefficients::IDENTITY.magnitude_db(f, RATE), 0.0, 1e-9));
+        }
+    }
+
+    #[test]
+    fn pass_filters_are_3_db_down_at_their_corner_and_pass_the_other_side() {
+        let hp = Coefficients::design(&Band { kind: FilterType::HighPass, freq: 100.0, gain_db: 0.0, q: std::f64::consts::FRAC_1_SQRT_2 }, RATE);
+        assert!(close(hp.magnitude_db(100.0, RATE), -3.01, 0.02));
+        assert!(close(hp.magnitude_db(5_000.0, RATE), 0.0, 0.01));
+        assert!(hp.magnitude_db(25.0, RATE) < -20.0);
+        let lp = Coefficients::design(&Band { kind: FilterType::LowPass, freq: 8_000.0, gain_db: 0.0, q: std::f64::consts::FRAC_1_SQRT_2 }, RATE);
+        assert!(close(lp.magnitude_db(8_000.0, RATE), -3.01, 0.05));
+        assert!(close(lp.magnitude_db(100.0, RATE), 0.0, 0.01));
+    }
+
+    #[test]
+    fn filter_types_round_trip_through_their_names() {
+        for t in FilterType::ALL {
+            assert_eq!(FilterType::parse(t.as_str()), Some(t));
         }
     }
 

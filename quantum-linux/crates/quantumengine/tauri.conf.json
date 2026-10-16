@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "QuantumEngine",
-        "width": 440,
-        "height": 800,
+        "width": 1100,
+        "height": 740,
         "minWidth": 360,
         "minHeight": 520,
         "backgroundColor": "#0e0f12"

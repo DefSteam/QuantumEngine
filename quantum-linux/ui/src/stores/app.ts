@@ -5,7 +5,7 @@
 
 import { defineStore } from "pinia";
 import { computed, ref, shallowRef } from "vue";
-import { api, type Info } from "../api";
+import { api, type Band, type Info } from "../api";
 import type { LightingDto, StateDto, ZoneDto } from "../bindings";
 
 export type Section = "sound" | "lights" | "eq" | "device";
@@ -33,7 +33,7 @@ const EMPTY_STATE: StateDto = {
     busy: false,
     lastError: "",
   },
-  eq: { enabled: false, profile: "", profiles: [], correction: "", status: "" },
+  eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
   surround: { enabled: false, status: "" },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
 };
@@ -44,6 +44,14 @@ const SECTIONS: Section[] = ["sound", "lights", "eq", "device"];
 function initialSection(): Section {
   const asked = new URLSearchParams(location.search).get("section");
   return SECTIONS.find((s) => s === asked) ?? "sound";
+}
+
+/** A custom EQ profile being made or changed. */
+export interface EqEditor {
+  /** The custom profile being edited, or null for a new one. */
+  original: string | null;
+  name: string;
+  bands: Band[];
 }
 
 export interface Toast {
@@ -69,7 +77,7 @@ function sameZone(a: ZoneDto, b: ZoneDto): boolean {
 
 export const useApp = defineStore("app", () => {
   const state = shallowRef<StateDto>(EMPTY_STATE);
-  const info = shallowRef<Info>({ version: "", effects: [], maxColours: 5, eqFrequencies: [] });
+  const info = shallowRef<Info>({ version: "", effects: [], maxColours: 5, eqFrequencies: [], eqMaxBands: 18 });
   const section = ref<Section>(initialSection());
   /** What's being changed right now, e.g. `anc:on`; one at a time. */
   const pending = ref<string | null>(null);
@@ -78,6 +86,7 @@ export const useApp = defineStore("app", () => {
   const applied = shallowRef<LightingDto | null>(null);
   const draft = ref<LightingDto | null>(null);
   const curves = ref<Record<string, number[]>>({});
+  const editor = ref<EqEditor | null>(null);
 
   const headset = computed(() => state.value.headset);
   const serviceUp = computed(() => state.value.service === "up");
@@ -122,10 +131,66 @@ export const useApp = defineStore("app", () => {
     const lighting = await api.lighting();
     applied.value = lighting;
     draft.value = cloneLighting(lighting);
+    // Dev server only: `&editor` opens the EQ editor, for screenshots.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has("editor")) {
+      void openEditor(state.value.eq.profile, true);
+    }
     // Dev server only: `&draft` starts with an unapplied edit, for screenshots.
     if (import.meta.env.DEV && new URLSearchParams(location.search).has("draft")) {
       draft.value.ring.colours = ["#ff4d6d", "#ffb347"];
     }
+  }
+
+  /** Drops cached curves, e.g. after a custom profile changed. */
+  function forgetCurves() {
+    curves.value = {};
+  }
+
+  /** Opens the editor on a copy of `from` (a new profile), or on `from`
+   *  itself when it's one of the user's own and `edit` is set. */
+  async function openEditor(from: string, edit: boolean) {
+    try {
+      const bands = await api.eqProfileBands(from);
+      const own = state.value.eq.custom.includes(from);
+      editor.value =
+        edit && own
+          ? { original: from, name: from, bands }
+          : { original: null, name: from === "Flat" ? "My profile" : `${from} (mine)`, bands };
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function closeEditor() {
+    editor.value = null;
+    if (state.value.eq.previewing) {
+      await api.endEqPreview().catch(() => {});
+    }
+  }
+
+  function saveEditor() {
+    const e = editor.value;
+    if (!e) return;
+    return run("eqedit:save", async () => {
+      await api.saveEqProfile(e.original ?? "", e.name, e.bands);
+      editor.value = null;
+      forgetCurves();
+    });
+  }
+
+  function deleteProfile(name: string) {
+    return run("eqedit:delete", async () => {
+      await api.deleteEqProfile(name);
+      if (editor.value?.original === name) editor.value = null;
+      forgetCurves();
+    });
+  }
+
+  function importProfile() {
+    return run("eqedit:import", async () => {
+      const name = await api.importEqProfile();
+      if (name) forgetCurves();
+    });
   }
 
   async function curve(profile: string, correction: string): Promise<number[]> {
@@ -180,6 +245,12 @@ export const useApp = defineStore("app", () => {
     toast,
     dismiss,
     curve,
+    editor,
+    openEditor,
+    closeEditor,
+    saveEditor,
+    deleteProfile,
+    importProfile,
     setAnc,
     setSidetone,
     setLights,

@@ -13,7 +13,7 @@ use crate::eq::{self, profiles::Correction};
 use crate::surround;
 use crate::update;
 use jbl_quantum::{Anc, Colour, Effect, Sidetone, Zone, ZoneLighting, MAX_SLOTS};
-use quantumengine_dbus::ZoneLightingArg;
+use quantumengine_dbus::{EqBand, ZoneLightingArg};
 use std::sync::mpsc::{self, Sender};
 use zbus::fdo;
 use zbus::interface;
@@ -135,7 +135,17 @@ impl HeadsetIface {
 
     #[zbus(property)]
     fn eq_profiles(&self) -> Vec<String> {
-        eq::profiles::PROFILES.iter().map(|p| p.name.to_string()).collect()
+        self.eq.state().profile_names()
+    }
+
+    #[zbus(property)]
+    fn eq_custom_profiles(&self) -> Vec<String> {
+        self.eq.state().custom.into_iter().map(|p| p.name).collect()
+    }
+
+    #[zbus(property)]
+    fn eq_previewing(&self) -> bool {
+        self.eq.state().previewing
     }
 
     #[zbus(property)]
@@ -153,19 +163,60 @@ impl HeadsetIface {
     }
 
     fn set_eq_profile(&self, name: &str) -> fdo::Result<String> {
-        if eq::profiles::find(name).is_none() {
+        if self.eq.state().find(name).is_none() {
             return Err(fdo::Error::InvalidArgs(format!("unknown EQ profile '{name}'")));
         }
         let name = name.to_string();
-        self.eq.call(|r| eq::Command::Profile(name, r)).map(str::to_string).map_err(fdo::Error::Failed)
+        self.eq.call(|r| eq::Command::Profile(name, r)).map_err(fdo::Error::Failed)
     }
 
     fn eq_response(&self, profile: &str, correction: &str) -> fdo::Result<Vec<f64>> {
-        let p = eq::profiles::find(profile)
+        let (_, bands) = self
+            .eq
+            .state()
+            .find(profile)
             .ok_or_else(|| fdo::Error::InvalidArgs(format!("unknown EQ profile '{profile}'")))?;
-        let c = parse_correction(correction)?;
-        let freqs = (0..quantumengine_dbus::EQ_RESPONSE_POINTS).map(quantumengine_dbus::eq_response_freq);
-        Ok(eq::response(c, p, freqs))
+        response(&bands, correction)
+    }
+
+    fn eq_profile_bands(&self, name: &str) -> fdo::Result<Vec<EqBand>> {
+        let (_, bands) =
+            self.eq.state().find(name).ok_or_else(|| fdo::Error::InvalidArgs(format!("unknown EQ profile '{name}'")))?;
+        Ok(bands.iter().map(band_arg).collect())
+    }
+
+    fn eq_bands_response(&self, bands: Vec<EqBand>, correction: &str) -> fdo::Result<Vec<f64>> {
+        let bands = parse_bands(bands)?;
+        eq::custom::check_bands(&bands).map_err(fdo::Error::InvalidArgs)?;
+        response(&bands, correction)
+    }
+
+    fn save_eq_profile(&self, original: &str, name: &str, bands: Vec<EqBand>) -> fdo::Result<String> {
+        let bands = parse_bands(bands)?;
+        let original = (!original.is_empty()).then(|| original.to_string());
+        let name = name.to_string();
+        self.eq
+            .call(|reply| eq::Command::Save { original, name, bands, reply })
+            .map_err(fdo::Error::InvalidArgs)
+    }
+
+    fn delete_eq_profile(&self, name: &str) -> fdo::Result<()> {
+        let name = name.to_string();
+        self.eq.call(|r| eq::Command::Delete(name, r)).map_err(fdo::Error::InvalidArgs)
+    }
+
+    fn preview_eq_bands(&self, bands: Vec<EqBand>) -> fdo::Result<()> {
+        let bands = parse_bands(bands)?;
+        self.eq.call(|r| eq::Command::Preview(Some(bands), r)).map_err(fdo::Error::InvalidArgs)
+    }
+
+    fn end_eq_preview(&self) -> fdo::Result<()> {
+        self.eq.call(|r| eq::Command::Preview(None, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn import_eq_profile(&self, name: &str, text: &str) -> fdo::Result<String> {
+        let (name, text) = (name.to_string(), text.to_string());
+        self.eq.call(|reply| eq::Command::Import { name, text, reply }).map_err(fdo::Error::InvalidArgs)
     }
 
     #[zbus(property)]
@@ -386,6 +437,9 @@ pub fn serve(
             zbus::block_on(iface.busy_changed(emitter)),
             zbus::block_on(iface.last_error_changed(emitter)),
             zbus::block_on(iface.eq_enabled_changed(emitter)),
+            zbus::block_on(iface.eq_profiles_changed(emitter)),
+            zbus::block_on(iface.eq_custom_profiles_changed(emitter)),
+            zbus::block_on(iface.eq_previewing_changed(emitter)),
             zbus::block_on(iface.eq_profile_changed(emitter)),
             zbus::block_on(iface.eq_correction_changed(emitter)),
             zbus::block_on(iface.eq_status_changed(emitter)),
@@ -410,4 +464,28 @@ pub fn serve(
 fn parse_correction(s: &str) -> fdo::Result<Correction> {
     Correction::parse(s)
         .ok_or_else(|| fdo::Error::InvalidArgs(format!("unknown correction '{s}' (want off, stereo or surround)")))
+}
+
+fn response(bands: &[eq::biquad::Band], correction: &str) -> fdo::Result<Vec<f64>> {
+    let c = parse_correction(correction)?;
+    let freqs = (0..quantumengine_dbus::EQ_RESPONSE_POINTS).map(quantumengine_dbus::eq_response_freq);
+    Ok(eq::response(c, bands, freqs))
+}
+
+fn band_arg(b: &eq::biquad::Band) -> EqBand {
+    (b.kind.as_str().to_string(), b.freq, b.gain_db, b.q)
+}
+
+fn parse_bands(bands: Vec<EqBand>) -> fdo::Result<Vec<eq::biquad::Band>> {
+    bands
+        .into_iter()
+        .map(|(kind, freq, gain_db, q)| {
+            let kind = eq::biquad::FilterType::parse(&kind).ok_or_else(|| {
+                fdo::Error::InvalidArgs(format!(
+                    "unknown filter type '{kind}' (want bell, lowshelf, highshelf, highpass or lowpass)"
+                ))
+            })?;
+            Ok(eq::biquad::Band { kind, freq, gain_db, q })
+        })
+        .collect()
 }

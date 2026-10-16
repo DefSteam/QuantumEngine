@@ -2,7 +2,7 @@
 //! run off the main thread: the headset setters wait for the headset to
 //! confirm, which can take a couple of seconds.
 
-use crate::dto::{EffectDto, InfoDto, LightingDto, StateDto};
+use crate::dto::{BandDto, EffectDto, InfoDto, LightingDto, StateDto};
 use crate::lighting;
 use crate::service::Link;
 use jbl_quantum::{Effect, MAX_SLOTS};
@@ -50,6 +50,7 @@ pub fn info() -> InfoDto {
         effects: Effect::KNOWN.iter().map(|&(e, name)| EffectDto { id: e.0, label: effect_label(name) }).collect(),
         max_colours: MAX_SLOTS as u32,
         eq_frequencies: (0..quantumengine_dbus::EQ_RESPONSE_POINTS).map(quantumengine_dbus::eq_response_freq).collect(),
+        eq_max_bands: quantumengine_dbus::EQ_MAX_BANDS as u32,
     }
 }
 
@@ -120,6 +121,74 @@ pub async fn set_eq_profile(link: Shared<'_>, name: String) -> Result<String> {
 #[specta::specta]
 pub async fn set_eq_correction(link: Shared<'_>, correction: String) -> Result<String> {
     with_proxy(&link, move |p| p.set_eq_correction(&correction)).await
+}
+
+/// A profile's bands, built-in or custom.
+#[tauri::command]
+#[specta::specta]
+pub async fn eq_profile_bands(link: Shared<'_>, name: String) -> Result<Vec<BandDto>> {
+    let bands = with_proxy(&link, move |p| p.eq_profile_bands(&name)).await?;
+    Ok(bands.into_iter().map(|(kind, freq, gain, q)| BandDto { kind, freq, gain, q }).collect())
+}
+
+/// The curve of unsaved bands, like `eq_response`.
+#[tauri::command]
+#[specta::specta]
+pub async fn eq_bands_response(link: Shared<'_>, bands: Vec<BandDto>, correction: String) -> Result<Vec<f64>> {
+    with_proxy(&link, move |p| p.eq_bands_response(band_args(bands), &correction)).await
+}
+
+/// Saves a custom profile and selects it; `original` is the one being
+/// edited, or empty for a new one. Returns the saved name.
+#[tauri::command]
+#[specta::specta]
+pub async fn save_eq_profile(link: Shared<'_>, original: String, name: String, bands: Vec<BandDto>) -> Result<String> {
+    with_proxy(&link, move |p| p.save_eq_profile(&original, &name, band_args(bands))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_eq_profile(link: Shared<'_>, name: String) -> Result<()> {
+    with_proxy(&link, move |p| p.delete_eq_profile(&name)).await
+}
+
+/// Plays unsaved bands until `end_eq_preview`, a save or a profile change.
+#[tauri::command]
+#[specta::specta]
+pub async fn preview_eq_bands(link: Shared<'_>, bands: Vec<BandDto>) -> Result<()> {
+    with_proxy(&link, move |p| p.preview_eq_bands(band_args(bands))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn end_eq_preview(link: Shared<'_>) -> Result<()> {
+    with_proxy(&link, |p| p.end_eq_preview()).await
+}
+
+/// Asks for an AutoEQ / Equalizer APO `ParametricEQ.txt` or an EasyEffects
+/// preset and adds it as a profile. Returns its name, or `None` if the user
+/// cancelled.
+#[tauri::command]
+#[specta::specta]
+pub async fn import_eq_profile(app: tauri::AppHandle, link: Shared<'_>) -> Result<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Import an EQ curve")
+            .add_filter("EQ curves (AutoEQ, Equalizer APO, EasyEffects)", &["txt", "json"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+    let name = path.file_stem().map_or_else(|| "Imported".into(), |s| s.to_string_lossy().replace(['_', '-'], " "));
+    with_proxy(&link, move |p| p.import_eq_profile(&name, &text)).await.map(Some)
+}
+
+fn band_args(bands: Vec<BandDto>) -> Vec<quantumengine_dbus::EqBand> {
+    bands.into_iter().map(|b| (b.kind, b.freq, b.gain, b.q)).collect()
 }
 
 /// Virtual 7.1 surround; on also makes it the default output.

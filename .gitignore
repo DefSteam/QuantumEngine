@@ -21,3 +21,12 @@ __pycache__/
 *.swp
 *~
 .DS_Store
+
+# Arch packages and makepkg leftovers (the release workflow builds and
+# publishes the packages; they never belong in the repo)
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+*.pkg.tar.zst.sha256
+quantum-linux/packaging/src/
+quantum-linux/packaging/pkg/
+quantum-linux/packaging/*.tar.gz

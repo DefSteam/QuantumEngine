@@ -74,7 +74,7 @@ impl Drop for Graph {
     }
 }
 
-fn runtime_dir() -> PathBuf {
+pub fn runtime_dir() -> PathBuf {
     match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(dir) => PathBuf::from(dir).join("quantumengine"),
         None => std::env::temp_dir().join(format!("quantumengine-{}", unsafe { libc::getuid() })),

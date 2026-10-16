@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { CircleAlert } from "lucide-vue-next";
+import { CircleAlert, FileUp, Pencil, Plus } from "lucide-vue-next";
+import { api } from "../api";
 import { useApp } from "../stores/app";
-import EqCurve from "./EqCurve.vue";
+import EqCurve, { type Handle } from "./EqCurve.vue";
+import EqEditor from "./EqEditor.vue";
 import PanelField from "./PanelField.vue";
 import SegmentedControl from "./SegmentedControl.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
@@ -23,10 +25,60 @@ const usable = computed(() => app.serviceUp && eq.value.profiles.length > 0);
 const on = computed(() => app.serviceUp && eq.value.enabled);
 const busy = computed(() => app.pending !== null);
 
-const groups = computed(() => [
-  { name: "General", profiles: eq.value.profiles.filter((p) => GENERAL.has(p)) },
-  { name: "Games", profiles: eq.value.profiles.filter((p) => !GENERAL.has(p)) },
-]);
+const groups = computed(() => {
+  const mine = new Set(eq.value.custom);
+  return [
+    { name: "General", profiles: eq.value.profiles.filter((p) => GENERAL.has(p) && !mine.has(p)) },
+    { name: "Games", profiles: eq.value.profiles.filter((p) => !GENERAL.has(p) && !mine.has(p)) },
+  ];
+});
+
+// Editing a custom profile: the curve follows the draft, and while the EQ
+// is on the draft plays too (both a moment after the last change).
+const editing = computed(() => app.editor !== null);
+const selectedBand = ref<number | null>(null);
+const editorPoints = ref<number[] | null>(null);
+const handles = computed<Handle[] | undefined>(() =>
+  app.editor?.bands.map((b) => ({ freq: b.freq, gain: b.gain, hasGain: b.kind !== "highpass" && b.kind !== "lowpass" })),
+);
+let pause: number | undefined;
+
+function draftValid(): boolean {
+  return !!app.editor?.bands.every(
+    (b) => b.freq >= 10 && b.freq <= 20000 && Math.abs(b.gain) <= 30 && b.q >= 0.05 && b.q <= 20,
+  );
+}
+
+watch(
+  () => app.editor && JSON.stringify(app.editor.bands),
+  (draft) => {
+    window.clearTimeout(pause);
+    if (!draft) {
+      editorPoints.value = null;
+      selectedBand.value = null;
+      return;
+    }
+    pause = window.setTimeout(async () => {
+      const e = app.editor;
+      if (!e || !draftValid()) return;
+      const bands = e.bands.map((b) => ({ ...b }));
+      try {
+        editorPoints.value = await api.eqBandsResponse(bands, eq.value.correction);
+        if (on.value) await api.previewEqBands(bands);
+      } catch (err) {
+        app.toast(err instanceof Error ? err.message : String(err));
+      }
+    }, 120);
+  },
+  { immediate: true },
+);
+
+function dragBand(i: number, freq: number, gain: number) {
+  const b = app.editor?.bands[i];
+  if (!b) return;
+  b.freq = freq;
+  if (handles.value?.[i]?.hasGain) b.gain = gain;
+}
 
 const points = ref<number[] | null>(null);
 const preview = ref<number[] | null>(null);
@@ -80,9 +132,21 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
         />
       </template>
       <div class="plot">
-        <EqCurve :freqs="app.info.eqFrequencies" :points="points" :preview="preview" :active="on" />
+        <EqCurve
+          :freqs="app.info.eqFrequencies"
+          :points="editing ? editorPoints : points"
+          :preview="editing ? null : preview"
+          :active="on"
+          :handles="handles"
+          :selected="selectedBand"
+          @drag="dragBand"
+          @select="selectedBand = $event"
+        />
         <p class="plot-note">
-          <template v-if="previewing && previewing !== eq.profile && preview">
+          <template v-if="editing">
+            <span class="swatch-line violet" />{{ app.editor?.name || "New profile" }}, editing
+          </template>
+          <template v-else-if="previewing && previewing !== eq.profile && preview">
             <span class="swatch-line violet" />{{ previewing }}, preview
           </template>
           <template v-else-if="app.state.serviceOutdated && !eq.profiles.length">
@@ -96,7 +160,8 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
       <p v-if="eq.status" class="status"><CircleAlert :size="15" :stroke-width="1.75" />{{ eq.status }}</p>
     </PanelField>
 
-    <PanelField title="Profile" :reading="eq.profile">
+    <EqEditor v-if="editing" v-model:selected="selectedBand" class="editor-block" />
+    <PanelField v-else title="Profile" :reading="eq.profile">
       <div v-for="g in groups" :key="g.name" class="group">
         <h4>{{ g.name }}</h4>
         <div class="profiles" role="radiogroup" :aria-label="`${g.name} profiles`" @mouseleave="showPreview(null)">
@@ -118,9 +183,67 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
           </button>
         </div>
       </div>
+      <div class="group">
+        <div class="group-head">
+          <h4>Yours</h4>
+          <div class="group-actions">
+            <button
+              type="button"
+              class="small-action"
+              :disabled="!usable || busy"
+              :title="`Start from ${eq.profile}`"
+              @click="app.openEditor(eq.profile, false)"
+            >
+              <Plus :size="14" :stroke-width="1.75" />New
+            </button>
+            <button
+              type="button"
+              class="small-action"
+              :disabled="!usable || busy"
+              title="AutoEQ or Equalizer APO ParametricEQ.txt, or an EasyEffects preset"
+              @click="app.importProfile"
+            >
+              <FileUp :size="14" :stroke-width="1.75" />{{ app.pending === "eqedit:import" ? "Importing…" : "Import…" }}
+            </button>
+          </div>
+        </div>
+        <div v-if="eq.custom.length" class="profiles mine" role="radiogroup" aria-label="Your profiles" @mouseleave="showPreview(null)">
+          <div v-for="p in eq.custom" :key="p" class="mine-row">
+            <button
+              type="button"
+              role="radio"
+              class="profile"
+              :aria-checked="p === eq.profile"
+              :class="{ on: p === eq.profile, pending: p === pendingProfile }"
+              :disabled="!usable || busy"
+              @mouseenter="showPreview(p)"
+              @focus="showPreview(p)"
+              @blur="showPreview(null)"
+              @click="p !== eq.profile && app.setEqProfile(p)"
+            >
+              <span class="mark" aria-hidden="true" />{{ p }}
+            </button>
+            <button
+              type="button"
+              class="edit"
+              :aria-label="`Edit ${p}`"
+              title="Edit"
+              :disabled="!usable || busy"
+              @click="app.openEditor(p, true)"
+            >
+              <Pencil :size="14" :stroke-width="1.75" />
+            </button>
+          </div>
+        </div>
+        <p v-else class="mine-empty">
+          Make your own from the current profile, or import a curve from
+          <span class="nowrap">AutoEQ</span>, Equalizer APO or EasyEffects.
+        </p>
+      </div>
     </PanelField>
 
     <PanelField
+      v-if="!editing"
       title="Headset tuning"
       hint="JBL's own correction for the Quantum 810, under the profile. JBL stereo is a gentle bass cut; JBL surround is the curve it uses with spatial sound."
     >
@@ -134,9 +257,6 @@ const pendingProfile = computed(() => pendingOf("eqprofile"));
       />
     </PanelField>
 
-    <p class="credit">
-      Profiles from JBL QuantumENGINE's configuration, extracted by alessandromrc and tested by DefSteam.
-    </p>
   </div>
 </template>
 
@@ -258,10 +378,100 @@ h4 {
   }
 }
 
-.credit {
-  margin: 28px 0 8px;
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.group-head h4 {
+  margin: 0;
+}
+
+.group-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.small-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    border-color 160ms,
+    color 160ms;
+}
+
+.small-action:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.small-action:disabled {
+  opacity: 0.4;
+}
+
+.mine-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mine-row .profile {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-3);
+  opacity: 0;
+  transition:
+    opacity 120ms,
+    color 120ms;
+}
+
+.mine-row:hover .edit,
+.edit:focus-visible {
+  opacity: 1;
+}
+
+.edit:hover {
+  color: var(--ink);
+  background: var(--film-raised);
+}
+
+.mine-empty {
+  margin: 0;
   font-size: 12px;
   color: var(--ink-3);
   text-wrap: pretty;
 }
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.editor-block {
+  margin-top: 26px;
+}
+
 </style>

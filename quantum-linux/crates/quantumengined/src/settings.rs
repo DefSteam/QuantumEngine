@@ -4,6 +4,7 @@
 //! changes settings through it over D-Bus, so there is one writer and nothing
 //! to merge.
 
+use crate::eq::custom::CustomProfile;
 use crate::eq::profiles::Correction;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -29,11 +30,12 @@ pub struct EqSettings {
     pub enabled: bool,
     pub profile: String,
     pub correction: Correction,
+    pub custom: Vec<CustomProfile>,
 }
 
 impl Default for EqSettings {
     fn default() -> Self {
-        Self { enabled: false, profile: "Flat".into(), correction: Correction::default() }
+        Self { enabled: false, profile: "Flat".into(), correction: Correction::default(), custom: Vec::new() }
     }
 }
 

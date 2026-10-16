@@ -25,7 +25,7 @@ the device and every command was checked on real hardware.
 | Microphone live/muted, game/chat dial | ✓ (live) | ✓ |
 | Live event stream | — | ✓ `watch` |
 | Serial, firmware, paired host name | ✓ | ✓ |
-| EQ: JBL's headset tuning and 19 sound profiles | ✓ | ✓ |
+| EQ: JBL's headset tuning, 19 sound profiles, your own and imported ones | ✓ | ✓ |
 | Virtual 7.1 surround | ✓ | ✓ |
 | Updates from GitHub releases | ✓ | ✓ |
 
@@ -141,6 +141,14 @@ and so does this. Turn it on in the window, the tray menu, the widget or with
   Cinematic, FPS, MOBA, RPG, and presets for specific games (CS2, Valorant,
   Apex Legends and more).
 
+- **Your own profiles**: under *Yours* in the EQ section, **New** copies the
+  current profile into an editor. There you name it and shape up to 18 bands
+  (bell, low or high shelf, high- or low-pass) by dragging their points on the
+  graph or typing exact values. With the EQ on you hear changes as you make
+  them; **Save and use** keeps them, **Cancel** goes back. **Import…** adds a
+  curve from an [AutoEQ](https://github.com/jaakkopasanen/AutoEq) or
+  Equalizer APO `ParametricEQ.txt`, or an EasyEffects preset.
+
 It runs as a PipeWire filter in front of the headset's **game** output only;
 chat is left alone. Your default output device doesn't change, and it works
 whether or not the headset is plugged in at the moment. Switching profiles is
@@ -155,26 +163,41 @@ The curves come from JBL QuantumENGINE's configuration files, as extracted by
 [alessandromrc](https://github.com/alessandromrc/jbl-quantum-4-linux) and
 tested by [DefSteam](https://github.com/DefSteam). Thank you both.
 
-## Virtual surround (Still Under Development)
+## Virtual surround
 
 On Windows, you set the headset to 7.1 in the sound settings and JBL's
 software turns the eight channels into 3D sound for headphones. QuantumEngine
 does the same with PipeWire. Switch on **Virtual surround 7.1** (in the
 window's Sound section, the tray menu, or `quantumenginectl surround on`) and
 it adds a 7.1 output called "QuantumEngine Surround 7.1" and makes it your
-default. Each channel is placed where its speaker would be (front ±30°, sides
-±90°, rear ±150°) using a measured head model, MIT's KEMAR dummy head, which
-libmysofa ships, and mixed down for the headset's game output. The EQ still
-applies on top. Switching it off makes the headset the default again.
+default. Switching it off makes the headset the default again.
 
 Games then see a 7.1 device: pick 7.1 or surround in their audio settings
-where they offer it. Stereo sound is spread across the virtual speakers by
-PipeWire's own upmixing, mostly from the front with some ambience around you.
-JBL's surround tuning (in the EQ) is the curve JBL uses with this.
+where they offer it. Stereo plays from two virtual speakers in front of you.
 
-It needs PipeWire's spatializer, which comes with `pipewire-audio`, and
-libmysofa. It won't sound exactly like JBL's own processing, which isn't
-available outside their app.
+How it renders follows the structure of JBL's own HX3D virtualiser, worked out
+from QuantumENGINE's configuration and binaries without reusing any of their
+code or data:
+
+- Each speaker channel is played through a binaural room impulse response:
+  what each ear hears from a speaker at its 7.1 position (front ±30°, centre,
+  sides ±90°, rear ±150°) in a small, furnished room. The service builds these
+  when surround starts, from MIT's KEMAR dummy-head measurements (which
+  libmysofa ships), early reflections from a simulated room, and a short
+  reverb tail that's different in each ear. The room is what puts sound
+  outside your head.
+- The head measurements are diffuse-field equalised: their average response
+  over every direction is removed, so the dummy head's own ear and microphone
+  colouring goes and only the directional cues remain.
+- Bass below 120 Hz skips all that and goes to both ears, and the LFE channel
+  is added to both ears at half level, so the low end stays clean.
+- The EQ's headset tuning switches to JBL surround while surround is on and
+  back to JBL stereo when it's off, as QuantumENGINE does. (A tuning set to
+  off stays off.)
+
+It needs PipeWire's convolver, which comes with `pipewire-audio`, and
+libmysofa. It won't sound exactly like JBL's processing, whose head-model data
+and DTS stage are theirs and stay out of this project.
 
 ## Updates
 
@@ -211,6 +234,9 @@ talkthru
 
 $ quantumenginectl eq bass boost
 on, Bass Boost (headset tuning: stereo)
+
+$ quantumenginectl eq import ~/Downloads/ParametricEQ.txt "My target"
+imported as "My target"
 
 $ quantumenginectl update
 QuantumEngine 0.3.0 is up to date

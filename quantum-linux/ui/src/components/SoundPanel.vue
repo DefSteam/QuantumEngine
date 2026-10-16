@@ -69,7 +69,7 @@ const noiseHint = computed(() => {
     </PanelField>
     <PanelField
       title="Virtual surround 7.1"
-      hint="Adds a 7.1 output, “QuantumEngine Surround 7.1”, and makes it your default; off switches back to the headset. Games set to 7.1 sound from all around you; stereo is spread out by PipeWire's upmixing. Pairs well with JBL surround tuning in EQ."
+      hint="Adds a 7.1 output, “QuantumEngine Surround 7.1”, and makes it your default; off switches back to the headset. Games set to 7.1 sound from all around you, and stereo plays from two speakers in front. The EQ's headset tuning switches to JBL surround with it, as on Windows."
     >
       <template #aside>
         <ToggleSwitch

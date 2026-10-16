@@ -155,6 +155,8 @@ fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
             profiles: get(take("EqProfiles")),
             correction: get(take("EqCorrection")),
             status: get(take("EqStatus")),
+            custom: get(take("EqCustomProfiles")),
+            previewing: get(take("EqPreviewing")),
         },
         surround: SurroundDto { enabled: get(take("SurroundEnabled")), status: get(take("SurroundStatus")) },
         update: UpdateDto {

@@ -1,6 +1,7 @@
-//! Virtual 7.1 surround: a PipeWire sink with eight channels, each placed
-//! around the listener with a measured HRTF (the MIT KEMAR dummy head that
-//! libmysofa ships), mixed down to stereo for the headset's game output.
+//! Virtual 7.1 surround: a PipeWire sink with eight channels, each played
+//! through a binaural room impulse response (see [`crate::brir`]: the MIT
+//! KEMAR head libmysofa ships, corrected, in a small simulated room), mixed
+//! down to stereo for the headset's game output.
 //!
 //! This is the Linux side of what QuantumENGINE does on Windows, where the
 //! headphones are set to 7.1 in the sound settings and the PC renders the
@@ -10,15 +11,30 @@
 //! the headset back. Its output goes to the headset's game output like any
 //! app, so the EQ still applies on top.
 //!
+//! The graph follows the structure of Harman's HX3D virtualiser, as found by
+//! static analysis of QuantumENGINE 2.8.6 (`reverse engineer/surroundsound/`):
+//! the same 7.1 speaker angles, a 0.9 trim on multichannel input, bass below
+//! 120 Hz kept out of the HRTF and sent to both ears, LFE added to both ears
+//! at half level, and JBL's surround tuning after the binaural stage (the EQ
+//! switches to it while surround is on). Only those numbers and that
+//! structure are reused; the HRTF data is the open MIT KEMAR set.
+//!
+//! ```text
+//! FL FR FC RL RR SL SR ─┬─ BRIR per ear ──── sum L/R ─ high-pass 120 Hz (LR4) ─┐
+//!                       └─ sum ×0.45 ──────┐                                      ├─ L / R
+//! LFE ─ HP 15 Hz ─ shelf ─ ×0.45 ──────────┴─ low-pass 120 Hz (LR4) ─ both ears ─┘
+//! ```
+//!
 //! One thread owns the graph; everything else reads [`State`] and sends
 //! [`Command`]s, as with the EQ.
 
-use crate::eq::pipewire::HEADSET_GAME_OUTPUT;
+use crate::brir;
+use crate::eq::{self, pipewire::HEADSET_GAME_OUTPUT, profiles::Correction};
 use crate::notifier::Notifier;
 use crate::pwgraph::{self, quoted, Graph};
 use crate::settings;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -26,27 +42,49 @@ use std::time::{Duration, Instant};
 const NODE_NAME: &str = "quantumengine_surround";
 const DESCRIPTION: &str = "QuantumEngine Surround 7.1";
 /// libmysofa's own copy of the MIT KEMAR measurements (BSD-3-Clause);
-/// `pipewire-audio` depends on libmysofa, so it's there wherever the
-/// spatializer plugin is.
+/// `pipewire-audio` depends on libmysofa, so it's there wherever PipeWire's
+/// audio stack is.
 const HRTF: &str = "/usr/share/libmysofa/MIT_KEMAR_normal_pinna.sofa";
 const RATE: u32 = 48_000;
 const WATCH_EVERY: Duration = Duration::from_secs(5);
 const RETRY_AFTER: Duration = Duration::from_secs(30);
 
-/// The 7.1 channels in PipeWire's order, each with where its speaker sits:
-/// degrees anticlockwise from straight ahead, as SOFA files measure them
-/// (so 30 is front left). The angles are ITU-R BS.775's, the standard 7.1
-/// layout. LFE has no direction; it plays from the front, quieter.
-const SPEAKERS: [(&str, f64, f64); 8] = [
-    ("FL", 30.0, 1.0),
-    ("FR", 330.0, 1.0),
-    ("FC", 0.0, 1.0),
-    ("LFE", 0.0, 0.5),
-    ("RL", 150.0, 1.0),
-    ("RR", 210.0, 1.0),
-    ("SL", 90.0, 1.0),
-    ("SR", 270.0, 1.0),
+/// The seven directional 7.1 channels in PipeWire's order, with where each
+/// speaker sits: degrees anticlockwise from straight ahead, as SOFA files
+/// measure them (so 30 is front left). These are the angles of
+/// QuantumENGINE's "Dolby 7.1" layout, which are also ITU-R BS.775's. LFE
+/// has no direction and takes the bass path instead.
+const SPEAKERS: [(&str, f64); 7] = [
+    ("FL", 30.0),
+    ("FR", 330.0),
+    ("FC", 0.0),
+    ("RL", 150.0),
+    ("RR", 210.0),
+    ("SL", 90.0),
+    ("SR", 270.0),
 ];
+/// Every channel PipeWire sends, in order: the speakers with LFE fourth.
+const POSITIONS: &str = "FL FR FC LFE RL RR SL SR";
+/// HX3D trims 5.1 and 7.1 input to 0.9 before rendering.
+const TRIM: f64 = 0.9;
+/// Below this, sound skips the HRTF and goes to both ears (HX3D's
+/// `XOverFc`): KEMAR's low end adds nothing but colouring, and bass has no
+/// direction you could hear anyway.
+const CROSSOVER_HZ: f64 = 120.0;
+/// Each channel's share of the summed bass, and LFE's, both as HX3D adds
+/// LFE: half level to each ear (then trimmed).
+const BASS_GAIN: f64 = 0.5 * TRIM;
+/// Butterworth Q; two in a row make a Linkwitz-Riley crossover, whose low
+/// and high halves add back up flat.
+const BUTTERWORTH_Q: f64 = std::f64::consts::FRAC_1_SQRT_2;
+/// Convolution partition sizes, set rather than left to defaults: a short
+/// first block keeps per-cycle work small (this is what stopped the
+/// crackling), and the 12288-tap responses take three tail blocks.
+const BLOCKSIZE: u32 = 256;
+const TAILSIZE: u32 = 4096;
+/// The buffer the surround sink asks for. Bigger than PipeWire's minimum, so
+/// every cycle has room for 7 convolutions; 21 ms of latency.
+const LATENCY: &str = "1024/48000";
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -88,10 +126,11 @@ pub fn no_reply<T>() -> Reply<T> {
 }
 
 /// Starts the surround thread, applying the saved setting straight away.
-pub fn spawn(notifier: Notifier) -> Handle {
+/// `eq` is told which JBL tuning goes with surround on or off.
+pub fn spawn(notifier: Notifier, eq: eq::Handle) -> Handle {
     let state = Arc::new(Mutex::new(State { enabled: settings::load().surround.enabled, status: String::new() }));
     let (commands, rx) = mpsc::channel();
-    let worker = Worker { state: state.clone(), notifier, graph: None, target: None, retry_at: None };
+    let worker = Worker { state: state.clone(), notifier, eq, graph: None, target: None, brir: None, retry_at: None };
     std::thread::Builder::new()
         .name("surround".into())
         .spawn(move || worker.run(rx))
@@ -102,9 +141,12 @@ pub fn spawn(notifier: Notifier) -> Handle {
 struct Worker {
     state: Arc<Mutex<State>>,
     notifier: Notifier,
+    eq: eq::Handle,
     graph: Option<Graph>,
     /// The headset sink the running graph plays into.
     target: Option<String>,
+    /// The impulse-response file, built once per run of the service.
+    brir: Option<PathBuf>,
     retry_at: Option<Instant>,
 }
 
@@ -123,11 +165,27 @@ impl Worker {
                     if changed {
                         self.retry_at = None;
                         self.apply(true);
+                        self.match_tuning(on);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => self.watch(),
                 Err(RecvTimeoutError::Disconnected) => return,
             }
+        }
+    }
+
+    /// Swaps JBL's stereo tuning for its surround tuning and back, as HX3D
+    /// does: the surround curve is the driver EQ it puts after the binaural
+    /// stage, the stereo one what it uses with 3D off. A tuning the user set
+    /// to off stays off.
+    fn match_tuning(&self, surround: bool) {
+        let (from, to) = if surround {
+            (Correction::Stereo, Correction::Surround)
+        } else {
+            (Correction::Surround, Correction::Stereo)
+        };
+        if self.eq.state().correction == from {
+            self.eq.send(eq::Command::Correction(to, eq::no_reply()));
         }
     }
 
@@ -181,7 +239,8 @@ impl Worker {
         let running = self.graph.as_mut().is_some_and(Graph::is_running) && pwgraph::node_id(NODE_NAME)?.is_some();
         if !running || self.target.as_deref() != Some(&target) {
             self.graph = None;
-            let graph = Graph::start(NODE_NAME, "the PipeWire surround filter", &config(NODE_NAME, &target))
+            let brir = self.brir_file()?;
+            let graph = Graph::start(NODE_NAME, "the PipeWire surround filter", &config(NODE_NAME, &target, &brir))
                 .inspect_err(|_| self.retry_at = Some(Instant::now() + RETRY_AFTER))?;
             self.graph = Some(graph);
             self.target = Some(target);
@@ -191,6 +250,21 @@ impl Worker {
             pwgraph::set_default(id)?;
         }
         Ok(())
+    }
+
+    /// Builds the BRIR file the first time surround starts.
+    fn brir_file(&mut self) -> Result<PathBuf, String> {
+        if let Some(path) = self.brir.as_ref().filter(|p| p.is_file()) {
+            return Ok(path.clone());
+        }
+        let azimuths: Vec<f64> = SPEAKERS.iter().map(|(_, az)| *az).collect();
+        let brirs = brir::build(Path::new(HRTF), &azimuths)?;
+        let dir = pwgraph::runtime_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        let path = dir.join(format!("{NODE_NAME}_brir.wav"));
+        brir::write_wav(&path, &brirs)?;
+        self.brir = Some(path.clone());
+        Ok(path)
     }
 
     fn stop(&mut self, restore_default: bool) -> Result<(), String> {
@@ -213,27 +287,73 @@ fn headset_sink() -> Result<Option<String>, String> {
     Ok(pwgraph::find_node(|p| HEADSET_GAME_OUTPUT.matches(p) && p["media.class"] == "Audio/Sink")?.map(|(_, name)| name))
 }
 
-fn config(node_name: &str, target: &str) -> String {
-    let hrtf = quoted(HRTF);
+fn config(node_name: &str, target: &str, brir: &Path) -> String {
+    let brir = quoted(&brir.to_string_lossy());
     let mut nodes = String::new();
     let mut links = String::new();
-    let mut inputs = String::new();
-    let mut gains = (String::new(), String::new());
-    for (i, (channel, azimuth, gain)) in SPEAKERS.iter().enumerate() {
+    let mut spatial_gains = String::new();
+    let mut bass_gains = String::new();
+    let mut node = |line: String| {
+        let _ = writeln!(nodes, "          {line}");
+    };
+    let mut link = |from: &str, to: &str| {
+        let _ = writeln!(links, "          {{ output = \"{from}\" input = \"{to}\" }}");
+    };
+
+    for (i, (channel, _)) in SPEAKERS.iter().enumerate() {
         let n = i + 1;
-        let _ = writeln!(
-            nodes,
-            "          {{ type = sofa label = spatializer name = sp{channel} config = {{ filename = {hrtf} }} control = {{ \"Azimuth\" = {azimuth:.1} \"Elevation\" = 0.0 \"Radius\" = 1.0 }} }}"
-        );
-        let _ = writeln!(links, "          {{ output = \"sp{channel}:Out L\" input = \"mixL:In {n}\" }}");
-        let _ = writeln!(links, "          {{ output = \"sp{channel}:Out R\" input = \"mixR:In {n}\" }}");
-        let _ = write!(inputs, " \"sp{channel}:In\"");
-        let _ = write!(gains.0, " \"Gain {n}\" = {gain:.2}");
-        let _ = write!(gains.1, " \"Gain {n}\" = {gain:.2}");
+        // One input feeds three places, both ears' convolvers and the bass
+        // sum, so it goes through a copy node first.
+        node(format!("{{ type = builtin label = copy name = in{channel} }}"));
+        // One convolver per ear; the WAV holds left then right for each
+        // speaker, in SPEAKERS order.
+        for (ear, side) in ["L", "R"].iter().enumerate() {
+            let wav_channel = 2 * i + ear;
+            node(format!(
+                "{{ type = builtin label = convolver name = cv{channel}{side} config = {{ filename = {brir} channel = {wav_channel} blocksize = {BLOCKSIZE} tailsize = {TAILSIZE} }} }}"
+            ));
+            link(&format!("in{channel}:Out"), &format!("cv{channel}{side}:In"));
+            link(&format!("cv{channel}{side}:Out"), &format!("hrtf{side}:In {n}"));
+        }
+        link(&format!("in{channel}:Out"), &format!("bass:In {n}"));
+        let _ = write!(spatial_gains, " \"Gain {n}\" = {TRIM:.2}");
+        let _ = write!(bass_gains, " \"Gain {n}\" = {BASS_GAIN:.2}");
     }
-    let positions: Vec<&str> = SPEAKERS.iter().map(|(c, ..)| *c).collect();
-    let positions = positions.join(" ");
-    let (gains_l, gains_r) = gains;
+    let lfe = SPEAKERS.len() + 1;
+    let _ = write!(bass_gains, " \"Gain {lfe}\" = {BASS_GAIN:.2}");
+
+    node(format!("{{ type = builtin label = mixer name = hrtfL control = {{{spatial_gains} }} }}"));
+    node(format!("{{ type = builtin label = mixer name = hrtfR control = {{{spatial_gains} }} }}"));
+    // HX3D's LFE channel EQ: a 15 Hz high-pass and a gentle shelf.
+    node(format!("{{ type = builtin label = bq_highpass name = lfeHp control = {{ \"Freq\" = 15.0 \"Q\" = {BUTTERWORTH_Q:.4} }} }}"));
+    node("{ type = builtin label = bq_lowshelf name = lfeShelf control = { \"Freq\" = 500.0 \"Q\" = 0.7071 \"Gain\" = -2.0 } }".into());
+    node(format!("{{ type = builtin label = mixer name = bass control = {{{bass_gains} }} }}"));
+    link("lfeHp:Out", "lfeShelf:In");
+    link("lfeShelf:Out", &format!("bass:In {lfe}"));
+
+    // The crossover: the binaural sum loses its lows, the bass sum its highs.
+    let bq = |label: &str, name: &str| {
+        format!("{{ type = builtin label = {label} name = {name} control = {{ \"Freq\" = {CROSSOVER_HZ:.1} \"Q\" = {BUTTERWORTH_Q:.4} }} }}")
+    };
+    for side in ["L", "R"] {
+        node(bq("bq_highpass", &format!("hp{side}1")));
+        node(bq("bq_highpass", &format!("hp{side}2")));
+        link(&format!("hrtf{side}:Out"), &format!("hp{side}1:In"));
+        link(&format!("hp{side}1:Out"), &format!("hp{side}2:In"));
+        node(format!("{{ type = builtin label = mixer name = out{side} }}"));
+        link(&format!("hp{side}2:Out"), &format!("out{side}:In 1"));
+        link("lp2:Out", &format!("out{side}:In 2"));
+    }
+    node(bq("bq_lowpass", "lp1"));
+    node(bq("bq_lowpass", "lp2"));
+    link("bass:Out", "lp1:In");
+    link("lp1:Out", "lp2:In");
+
+    let inputs: Vec<String> = POSITIONS
+        .split(' ')
+        .map(|c| if c == "LFE" { "\"lfeHp:In\"".to_string() } else { format!("\"in{c}:In\"") })
+        .collect();
+    let inputs = inputs.join(" ");
     let name = quoted(node_name);
     let output_name = quoted(&format!("{node_name}.output"));
     let description = quoted(DESCRIPTION);
@@ -256,24 +376,27 @@ context.modules = [
       media.name = {description}
       filter.graph = {{
         nodes = [
-{nodes}          {{ type = builtin label = mixer name = mixL control = {{{gains_l} }} }}
-          {{ type = builtin label = mixer name = mixR control = {{{gains_r} }} }}
-        ]
+{nodes}        ]
         links = [
 {links}        ]
-        inputs = [{inputs} ]
-        outputs = [ "mixL:Out" "mixR:Out" ]
+        inputs = [ {inputs} ]
+        outputs = [ "outL:Out" "outR:Out" ]
       }}
       capture.props = {{
         node.name = {name}
         media.class = Audio/Sink
         audio.rate = {RATE}
         audio.channels = 8
-        audio.position = [ {positions} ]
+        audio.position = [ {POSITIONS} ]
+        node.latency = {LATENCY}
+        # Stereo stays in the two front speakers; PipeWire's default upmix
+        # would spread diffuse copies into the sides and rear.
+        channelmix.upmix = false
       }}
       playback.props = {{
         node.name = {output_name}
         node.passive = true
+        node.latency = {LATENCY}
         audio.rate = {RATE}
         audio.channels = 2
         audio.position = [ FL FR ]
@@ -296,15 +419,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_places_all_eight_channels_and_mixes_them_to_stereo() {
-        let conf = config("test_surround", "some_headset");
-        assert_eq!(conf.matches("label = spatializer").count(), 8);
-        assert_eq!(conf.matches("input = \"mixL:In ").count(), 8);
-        assert_eq!(conf.matches("input = \"mixR:In ").count(), 8);
+    fn config_renders_seven_speakers_and_keeps_bass_out_of_the_hrtf() {
+        let conf = config("test_surround", "some_headset", Path::new("/run/brir.wav"));
+        assert_eq!(conf.matches("label = convolver").count(), 14);
         assert!(conf.contains("audio.position = [ FL FR FC LFE RL RR SL SR ]"));
-        assert!(conf.contains("name = spSL config = { filename = \"/usr/share/libmysofa/MIT_KEMAR_normal_pinna.sofa\" } control = { \"Azimuth\" = 90.0"));
+        assert!(conf.contains("inputs = [ \"inFL:In\" \"inFR:In\" \"inFC:In\" \"lfeHp:In\" \"inRL:In\""));
+        // SL is the sixth speaker: WAV channels 10 (left ear) and 11 (right).
+        assert!(conf.contains(
+            "name = cvSLR config = { filename = \"/run/brir.wav\" channel = 11 blocksize = 256 tailsize = 4096 }"
+        ));
+        // Every speaker feeds both the HRTF and the bass sum; LFE only the bass.
+        assert_eq!(conf.matches("input = \"bass:In ").count(), 8);
+        assert_eq!(conf.matches("input = \"hrtfL:In ").count(), 7);
+        assert!(conf.contains("{ output = \"lfeShelf:Out\" input = \"bass:In 8\" }"));
+        // Both ears get the high-passed binaural sum and the shared bass.
+        assert!(conf.contains("{ output = \"lp2:Out\" input = \"outL:In 2\" }"));
+        assert!(conf.contains("{ output = \"lp2:Out\" input = \"outR:In 2\" }"));
+        assert_eq!(conf.matches("label = bq_highpass name = hp").count(), 4);
+        assert!(conf.contains("\"Gain 1\" = 0.90"));
+        assert!(conf.contains("\"Gain 8\" = 0.45"));
+        assert!(conf.contains("channelmix.upmix = false"));
         assert!(conf.contains("target.object = \"some_headset\""));
-        assert!(conf.contains("\"Gain 4\" = 0.50"));
     }
 }
 
@@ -322,7 +457,10 @@ mod live_tests {
         let (_, target) = pwgraph::find_node(|p| p["media.class"] == "Audio/Sink" && !HEADSET_GAME_OUTPUT.matches(p))
             .unwrap()
             .expect("an audio output to play into");
-        let graph = Graph::start(name, "the test surround filter", &config(name, &target)).unwrap();
+        let azimuths: Vec<f64> = SPEAKERS.iter().map(|(_, az)| *az).collect();
+        let wav = pwgraph::runtime_dir().join("quantumengine_surround_test_brir.wav");
+        brir::write_wav(&wav, &brir::build(Path::new(HRTF), &azimuths).unwrap()).unwrap();
+        let graph = Graph::start(name, "the test surround filter", &config(name, &target, &wav)).unwrap();
         let found = pwgraph::find_node(|p| p["node.name"] == name && p["audio.channels"] == 8).unwrap();
         assert!(found.is_some(), "an 8-channel sink called {name}");
         drop(graph);

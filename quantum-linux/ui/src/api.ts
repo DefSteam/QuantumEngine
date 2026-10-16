@@ -6,6 +6,9 @@ import { commands, events, type InfoDto, type LightingDto } from "./bindings";
 /** `InfoDto` with its numbers non-null (Rust sends NaN as null; there is none). */
 export type Info = Omit<InfoDto, "eqFrequencies"> & { eqFrequencies: number[] };
 
+/** `BandDto` with its numbers non-null. */
+export type Band = { kind: string; freq: number; gain: number; q: number };
+
 type Outcome<T> = { status: "ok"; data: T } | { status: "error"; error: string };
 
 export async function unwrap<T>(call: Promise<Outcome<T>>): Promise<T> {
@@ -29,6 +32,18 @@ export const api = {
   setEqCorrection: (c: string) => unwrap(commands.setEqCorrection(c)),
   eqResponse: (profile: string, correction: string) =>
     unwrap(commands.eqResponse(profile, correction)).then((points) => points.map((p) => p ?? 0)),
+  eqProfileBands: (name: string): Promise<Band[]> =>
+    unwrap(commands.eqProfileBands(name)).then((bands) =>
+      bands.map((b) => ({ kind: b.kind, freq: b.freq ?? 1000, gain: b.gain ?? 0, q: b.q ?? 1 })),
+    ),
+  eqBandsResponse: (bands: Band[], correction: string) =>
+    unwrap(commands.eqBandsResponse(bands, correction)).then((points) => points.map((p) => p ?? 0)),
+  saveEqProfile: (original: string, name: string, bands: Band[]) =>
+    unwrap(commands.saveEqProfile(original, name, bands)),
+  deleteEqProfile: (name: string) => unwrap(commands.deleteEqProfile(name)),
+  previewEqBands: (bands: Band[]) => unwrap(commands.previewEqBands(bands)),
+  endEqPreview: () => unwrap(commands.endEqPreview()),
+  importEqProfile: () => unwrap(commands.importEqProfile()),
   setSurround: (on: boolean) => unwrap(commands.setSurroundEnabled(on)),
   checkForUpdates: () => unwrap(commands.checkForUpdates()),
   installUpdate: () => unwrap(commands.installUpdate()),
