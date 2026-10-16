@@ -38,12 +38,15 @@ windows, with presets in their own section.
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/QE_Sound.png" width="48%" alt="QuantumEngine Sound tab">
-  <img src="screenshots/QE_EQ.png" width="48%" alt="QuantumEngine EQ tab">
+  <img src="screenshots/QE_Sound.png" width="75%" alt="QuantumEngine Sound tab">
 </p>
 
 <p align="center">
-  <img src="screenshots/QE_Widget.png" width="38%" alt="QuantumEngine KDE Plasma widget">
+  <img src="screenshots/QE_EQ.png" width="75%" alt="QuantumEngine EQ tab">
+</p>
+
+<p align="center">
+  <img src="screenshots/QE_Widget.png" width="40%" alt="QuantumEngine KDE Plasma widget">
 </p>
 
 The dongle doesn't expose the headset's hardware volume or auto-off timer. Use
