@@ -284,23 +284,42 @@ impl Worker {
             return Err("the download doesn't match the release's checksum".into());
         }
 
-        self.set(|s| s.status = "Waiting for your password…".into());
-        let out = Process::new("pkexec")
-            .args(["pacman", "-U", "--noconfirm"])
-            .arg(&path)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| format!("cannot run pkexec: {e}"))?;
+        self.set(|s| s.status = "Waiting for your password, then installing…".into());
+        // pacman's errors go to a file, not a pipe, and the wait is for pkexec
+        // itself to exit. pacman's hooks can leave a process running that
+        // inherited the pipe; reading a pipe to its end would then never finish,
+        // though the install had.
+        let mut pkexec = Process::new("pkexec");
+        pkexec.args(["pacman", "-U", "--noconfirm"]).arg(&path);
+        let ran = run_logged(pkexec, &dir.join("pacman.log"));
         let _ = std::fs::remove_file(&path);
-        match out.status.code() {
-            Some(0) => Ok(()),
-            Some(126) => Err("the password prompt was cancelled".into()),
-            Some(127) => Err("not authorised to install packages".into()),
-            _ => {
-                let stderr = String::from_utf8_lossy(&out.stderr);
-                let reason = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("unknown error");
-                Err(format!("pacman failed: {}", reason.trim()))
-            }
+        let (code, stderr) = ran.map_err(|e| format!("cannot run pkexec: {e}"))?;
+        pkexec_outcome(code, &stderr)
+    }
+}
+
+/// Runs `cmd` until it exits and returns its exit code and what it wrote to
+/// stderr. Its stderr goes to `log` (then removed), never a pipe, so a process
+/// it leaves behind holding that stream can't keep this waiting.
+fn run_logged(mut cmd: Process, log: &Path) -> std::io::Result<(Option<i32>, String)> {
+    let file = std::fs::File::create(log)?;
+    let status = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(file).status();
+    let stderr = std::fs::read_to_string(log).unwrap_or_default();
+    let _ = std::fs::remove_file(log);
+    Ok((status?.code(), stderr))
+}
+
+/// What pkexec's exit status means. 126 and 127 are pkexec's own (cancelled,
+/// not authorised); anything else non-zero is pacman's, explained by the last
+/// line it wrote.
+fn pkexec_outcome(code: Option<i32>, stderr: &str) -> Result<(), String> {
+    match code {
+        Some(0) => Ok(()),
+        Some(126) => Err("the password prompt was cancelled".into()),
+        Some(127) => Err("not authorised to install packages".into()),
+        _ => {
+            let reason = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("unknown error");
+            Err(format!("pacman failed: {}", reason.trim()))
         }
     }
 }
@@ -444,6 +463,36 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// The install hang: pacman had finished, but a process its hooks started
+    /// still held the output pipe, and reading that pipe to its end never
+    /// returned. `run_logged` returns as soon as the command itself exits.
+    #[test]
+    fn a_leftover_background_process_does_not_keep_the_install_waiting() {
+        let dir = std::env::temp_dir().join(format!("qe-run-logged-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("log");
+        let mut cmd = super::Process::new("sh");
+        cmd.args(["-c", "echo 'error: something broke' >&2; sleep 30 & exit 3"]);
+        let started = std::time::Instant::now();
+        let (code, stderr) = super::run_logged(cmd, &log).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5), "waited {:?}", started.elapsed());
+        assert_eq!(code, Some(3));
+        assert!(stderr.contains("something broke"));
+        assert!(!log.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn pkexec_exit_codes_say_what_happened() {
+        assert_eq!(super::pkexec_outcome(Some(0), ""), Ok(()));
+        assert!(super::pkexec_outcome(Some(126), "").unwrap_err().contains("cancelled"));
+        assert!(super::pkexec_outcome(Some(127), "").unwrap_err().contains("not authorised"));
+        assert_eq!(
+            super::pkexec_outcome(Some(1), "loading packages...\nerror: failed to commit transaction\n\n"),
+            Err("pacman failed: error: failed to commit transaction".into())
+        );
+    }
+
     use super::*;
 
     #[test]
