@@ -58,12 +58,17 @@ install it:
 sudo pacman -U quantumengine-*-x86_64.pkg.tar.zst
 ```
 
-Or build it yourself (run `makepkg` as your normal user, not with `sudo`):
+Or build a pacman package from this checkout. Run it as your normal user, not
+with `sudo`; without a version argument it increments the patch version and
+offers to install the package when the build finishes:
 
 ```sh
-cd packaging
-makepkg -si
+./scripts/build.sh
 ```
+
+You can pass `--no-bump` to rebuild at the current version, or pass an explicit
+version such as `./scripts/build.sh 0.5.0`. Declining installation leaves the
+package in `packaging/` for later use.
 
 The package installs the udev rule for you. Unplug the dongle and plug it back
 in afterwards. Once installed, the app updates itself (see [Updates](#updates)).

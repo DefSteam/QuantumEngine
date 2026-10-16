@@ -38,6 +38,22 @@ Auto-off timer and hardware volume aren't supported over the dongle.
 > rough edges here, and treat what the window shows as a preview, not a
 > readout. Fixes are planned.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/QE_Sound.png" width="48%" alt="QuantumEngine Sound tab">
+  <img src="screenshots/QE_Lights.png" width="48%" alt="QuantumEngine Lights tab">
+</p>
+
+<p align="center">
+  <img src="screenshots/QE_EQ-Presets.png" width="48%" alt="QuantumEngine EQ presets">
+  <img src="screenshots/QE_EQ-Create-Preset.png" width="48%" alt="QuantumEngine custom EQ preset editor">
+</p>
+
+<p align="center">
+  <img src="screenshots/QE_Widget.png" width="38%" alt="QuantumEngine KDE Plasma widget">
+</p>
+
 ## Supported hardware
 
 | Headset | USB ID | Status |

@@ -1,0 +1,45 @@
+# Build a package from the already compiled binaries in this checkout.
+pkgname=quantumengine
+pkgver="$(awk '
+  /^\[workspace\.package\]$/ { in_workspace = 1; next }
+  /^\[/ { in_workspace = 0 }
+  in_workspace && /^version[[:space:]]*=/ { gsub(/"/, "", $3); print $3; exit }
+' "$startdir/../Cargo.toml")"
+pkgrel=1
+pkgdesc="Control JBL Quantum 810 Wireless headsets on Linux"
+arch=('x86_64' 'aarch64')
+url="https://github.com/sidmax7/QuantumEngine"
+license=('MIT OR Apache-2.0')
+depends=('glibc' 'libgcc' 'hicolor-icon-theme' 'webkit2gtk-4.1' 'gtk3' 'curl' 'libmysofa')
+optdepends=('pipewire: the equalizer'
+            'wireplumber: the equalizer (0.5 or newer)'
+            'pipewire-audio: virtual 7.1 surround'
+            'polkit: installing updates from the app'
+            'plasma5support: the QuantumEngine Plasma widget'
+            'plasma-workspace: the QuantumEngine Plasma widget')
+options=('!debug')
+source=()
+sha256sums=()
+
+package() {
+  local project_dir="$(realpath "$startdir/..")"
+  install -Dm755 "$project_dir/target/release/quantumenginectl" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$project_dir/target/release/quantumengine" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$project_dir/target/release/quantumengined" -t "$pkgdir/usr/bin/"
+  install -Dm644 "$project_dir/packaging/quantumengine.desktop" -t "$pkgdir/usr/share/applications/"
+  install -Dm644 "$project_dir/packaging/quantumengine-tray.desktop" -t "$pkgdir/etc/xdg/autostart/"
+
+  local plasmoid=org.quantumengine.plasmoid
+  while IFS= read -r -d '' file; do
+    install -Dm644 "$file" "$pkgdir/usr/share/plasma/plasmoids/$plasmoid/${file#"$project_dir/packaging/plasmoid/$plasmoid/"}"
+  done < <(find "$project_dir/packaging/plasmoid/$plasmoid" -type f -print0)
+
+  for size in 16 32 48 64 128 256 512; do
+    install -Dm644 "$project_dir/packaging/icons/hicolor/${size}x${size}/apps/quantumengine.png" \
+      -t "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/"
+  done
+
+  install -Dm644 "$project_dir/udev/70-jbl-quantum.rules" -t "$pkgdir/usr/lib/udev/rules.d/"
+  install -Dm644 "$project_dir/README.md" -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 "$project_dir/LICENSE-MIT" "$project_dir/LICENSE-APACHE" -t "$pkgdir/usr/share/licenses/$pkgname/"
+}
