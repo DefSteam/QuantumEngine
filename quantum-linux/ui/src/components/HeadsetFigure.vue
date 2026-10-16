@@ -91,22 +91,30 @@ const CY = 170;
       <div class="stage">
       <svg viewBox="0 0 400 300" class="drawing" aria-hidden="true">
         <defs>
+          <!-- Premium JBL Matte/Metallic Gradients -->
           <linearGradient id="headband-shell" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#30343b" />
-            <stop offset="0.52" stop-color="#202329" />
-            <stop offset="1" stop-color="#17191e" />
+            <stop offset="0" stop-color="#3a3f4a" />
+            <stop offset="0.5" stop-color="#22252c" />
+            <stop offset="1" stop-color="#14161a" />
           </linearGradient>
           <linearGradient id="cup-shell" x1="0" y1="0" x2="1" y2="0.9">
-            <stop offset="0" stop-color="#343941" />
-            <stop offset="0.38" stop-color="#24272d" />
-            <stop offset="1" stop-color="#17191e" />
+            <stop offset="0" stop-color="#3d4450" />
+            <stop offset="0.35" stop-color="#242830" />
+            <stop offset="0.85" stop-color="#15171c" />
+            <stop offset="1" stop-color="#0e1014" />
           </linearGradient>
           <linearGradient id="cup-face" x1="0" y1="0" x2="0.9" y2="1">
-            <stop offset="0" stop-color="#202329" />
-            <stop offset="1" stop-color="#111316" />
+            <stop offset="0" stop-color="#1b1e25" />
+            <stop offset="0.7" stop-color="#101216" />
+            <stop offset="1" stop-color="#090a0c" />
+          </linearGradient>
+          <linearGradient id="jbl-accent" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#ff5500" />
+            <stop offset="1" stop-color="#e03b00" />
           </linearGradient>
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="5" />
+            <feGaussianBlur stdDeviation="6" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
@@ -118,203 +126,226 @@ const CY = 170;
           <polyline class="leader" points="347,186 384,186 384,244" />
         </g>
 
+        <!-- Audio Cables with Slack Curve & Tweakable Position Offset -->
+          <g class="cables" transform="translate(-18, -27)">
+            <!-- Left Cable with Slack Curve -->
+            <path d="M 101 112 C 80 122 74 135 96 143" fill="none" stroke="#15171c" stroke-width="6" stroke-linecap="round" />
+            <path d="M 101 112 C 80 122 74 135 96 143" fill="none" stroke="#2d323b" stroke-width="3.5" stroke-linecap="round" />
+            <path d="M 103 112 C 82 122 76 135 98 143" fill="none" stroke="#ff5500" stroke-width="1" opacity="0.7" stroke-linecap="round" />
+          </g>
+
+          <g class="cables" transform="translate(18, -27)">
+            <!-- Right Cable with Slack Curve -->
+            <path d="M 299 112 C 320 122 326 135 304 143" fill="none" stroke="#15171c" stroke-width="6" stroke-linecap="round" />
+            <path d="M 299 112 C 320 122 326 135 304 143" fill="none" stroke="#2d323b" stroke-width="3.5" stroke-linecap="round" />
+            <path d="M 297 112 C 318 122 324 135 302 143" fill="none" stroke="#ff5500" stroke-width="1" opacity="0.7" stroke-linecap="round" />
+          </g>
+
         <g transform="translate(0 -10)">
-        <!-- Headband -->
-        <path
-          class="band"
-          d="M 90 124 C 90 -2 310 -2 310 124 L 288 124 C 288 36 112 36 112 124 Z"
-        />
-        <path class="band-pad" d="M 103 108 C 103 18 297 18 297 108 L 286 108 C 286 39 114 39 114 108 Z" />
-        <path class="seam" d="M 101 120 C 101 17 299 17 299 120" />
-        <path class="band-highlight" d="M 96 105 C 96 8 304 8 304 105" />
-        <rect class="slider" x="95" y="94" width="14" height="22" rx="3" />
-        <rect class="slider" x="291" y="94" width="14" height="22" rx="3" />
-        <path class="yoke" d="M 96 107 C 86 116 84 132 88 148 L 98 149 C 95 133 97 118 108 109 Z" />
-        <path class="yoke" d="M 304 107 C 314 116 316 132 312 148 L 302 149 C 305 133 303 118 292 109 Z" />
+          <!-- Headband Structure & Cushion -->
+          <path
+            class="band"
+            d="M 85 125 C 85 -6 315 -6 315 125 L 291 125 C 291 32 109 32 109 125 Z"
+            transform="translate(0, -30)"
+          />
+          <path class="band-pad" d="M 98 123 C 98 26 302 26 302 123 L 306 123 C 306 22 94 22 94 123 Z" transform="translate(0, -30)" />
+          <path class="seam" d="M 96 118 C 96 14 304 14 304 118" transform="translate(0, -30)" />
+          <path class="band-highlight" d="M 91 102 C 91 4 309 4 309 102" transform="translate(0, -30)" />
 
-        <!-- Mic boom, from the left cup to the capsule. -->
-        <path class="boom-outer" d="M 72 214 C 62 256 108 282 152 270" />
-        <path class="boom-inner" d="M 72 214 C 62 256 108 282 152 270" />
-        <g class="mic" :class="{ live: ready && h.micActive }">
-          <ellipse class="capsule" cx="158" cy="268" rx="10" ry="8" />
-          <circle class="mic-dot" cx="158" cy="268" r="3" />
-          <line v-if="ready && !h.micActive" class="mic-slash" x1="151" y1="275" x2="165" y2="261" />
-        </g>
+          <!-- Slider Adjusters with JBL Orange Accent -->
+          <rect class="slider" x="89" y="90" width="16" height="26" rx="4" />
+          <line x1="97" y1="94" x2="97" y2="112" stroke="#ff5500" stroke-width="1.5" opacity="0.8" />
+          <rect class="slider" x="295" y="90" width="16" height="26" rx="4" />
+          <line x1="303" y1="94" x2="303" y2="112" stroke="#ff5500" stroke-width="1.5" opacity="0.8" />
 
-        <!-- Earcups -->
-        <g v-for="cup in cups" :key="cup.side" class="cup">
-          <ellipse class="shell-shadow" :cx="cup.cx" :cy="CY + 3" rx="54" ry="65" />
-          <ellipse class="shell" :cx="cup.cx" :cy="CY" rx="52" ry="64" />
-          <path class="shell-glint" :d="`M ${cup.cx - 43} 145 C ${cup.cx - 37} 118 ${cup.cx + 1} 107 ${cup.cx + 30} 126`" />
+          <!-- Articulated Boom Mic (Left Earcup) -->
+          <path class="boom-outer" d="M 72 214 C 58 258 106 286 152 272" />
+          <path class="boom-inner" d="M 72 214 C 58 258 106 286 152 272" />
+          <g class="mic" :class="{ live: ready && h.micActive }">
+            <ellipse class="capsule" cx="158" cy="268" rx="11" ry="8.5" />
+            <circle class="mic-dot" cx="158" cy="268" r="3.5" />
+            <line v-if="ready && !h.micActive" class="mic-slash" x1="150" y1="276" x2="166" y2="260" stroke="#ff5500" stroke-width="2" />
+          </g>
 
-          <template v-if="lit && draft">
-            <ellipse
-              class="ring-glow"
-              :cx="cup.cx"
-              :cy="CY"
-              rx="42"
-              ry="53"
-              filter="url(#glow)"
-              :stroke="draft.ring.colours[0]"
-              :opacity="glowOpacity(draft.ring)"
-            >
-              <animate
-                v-if="motion(draft.ring, 'ring') === 'fade'"
-                attributeName="stroke"
-                :values="cycle(draft.ring)"
-                :dur="`${draft.ring.colours.length * 1.6}s`"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.ring, 'ring') === 'step'"
-                attributeName="stroke"
-                :values="cycle(draft.ring)"
-                :dur="`${draft.ring.colours.length * 0.6}s`"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.ring, 'ring') === 'spectrum'"
-                attributeName="stroke"
-                :values="SPECTRUM"
-                dur="6s"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-if="motion(draft.ring, 'ring') === 'blink'"
-                attributeName="opacity"
-                :values="`${glowOpacity(draft.ring)};0.05`"
-                dur="0.5s"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-            </ellipse>
-            <ellipse
-              class="ring"
-              :class="{ chase: motion(draft.ring, 'ring') === 'chase' }"
-              :cx="cup.cx"
-              :cy="CY"
-              rx="42"
-              ry="53"
-              :stroke="draft.ring.colours[0]"
-            >
-              <animate
-                v-if="motion(draft.ring, 'ring') === 'fade'"
-                attributeName="stroke"
-                :values="cycle(draft.ring)"
-                :dur="`${draft.ring.colours.length * 1.6}s`"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.ring, 'ring') === 'step' || motion(draft.ring, 'ring') === 'chase'"
-                attributeName="stroke"
-                :values="cycle(draft.ring)"
-                :dur="`${draft.ring.colours.length * 0.6}s`"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.ring, 'ring') === 'spectrum'"
-                attributeName="stroke"
-                :values="SPECTRUM"
-                dur="6s"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-if="motion(draft.ring, 'ring') === 'blink'"
-                attributeName="opacity"
-                values="1;0.12"
-                dur="0.5s"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-if="motion(draft.ring, 'ring') === 'chase'"
-                attributeName="stroke-dashoffset"
-                values="0;-60"
-                dur="1.2s"
-                repeatCount="indefinite"
-              />
-            </ellipse>
-          </template>
-          <ellipse v-else class="ring unlit" :cx="cup.cx" :cy="CY" rx="42" ry="53" />
+          <!-- Earcups -->
+          <g v-for="cup in cups" :key="cup.side" class="cup">
+            <ellipse class="shell-shadow" :cx="cup.cx" :cy="CY + 4" rx="56" ry="67" />
+            <ellipse class="shell" :cx="cup.cx" :cy="CY" rx="53" ry="65" />
+            <!-- Sleek Angular Glint / Bevel -->
+            <path class="shell-glint" :d="`M ${cup.cx - 44} 145 C ${cup.cx - 36} 114 ${cup.cx + 2} 104 ${cup.cx + 32} 125`" />
 
-          <ellipse class="cap" :cx="cup.cx" :cy="CY" rx="33" ry="43" />
-          <ellipse class="cap-inset" :cx="cup.cx" :cy="CY" rx="27" ry="36" />
-          <circle class="fastener" :cx="cup.cx - 23" :cy="CY - 30" r="1.5" />
-          <circle class="fastener" :cx="cup.cx + 23" :cy="CY + 30" r="1.5" />
+            <!-- Dynamic RGB Rings -->
+            <template v-if="lit && draft">
+              <ellipse
+                class="ring-glow"
+                :cx="cup.cx"
+                :cy="CY"
+                rx="43"
+                ry="54"
+                filter="url(#glow)"
+                :stroke="draft.ring.colours[0]"
+                :opacity="glowOpacity(draft.ring)"
+              >
+                <animate
+                  v-if="motion(draft.ring, 'ring') === 'fade'"
+                  attributeName="stroke"
+                  :values="cycle(draft.ring)"
+                  :dur="`${draft.ring.colours.length * 1.6}s`"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.ring, 'ring') === 'step'"
+                  attributeName="stroke"
+                  :values="cycle(draft.ring)"
+                  :dur="`${draft.ring.colours.length * 0.6}s`"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.ring, 'ring') === 'spectrum'"
+                  attributeName="stroke"
+                  :values="SPECTRUM"
+                  dur="6s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-if="motion(draft.ring, 'ring') === 'blink'"
+                  attributeName="opacity"
+                  :values="`${glowOpacity(draft.ring)};0.05`"
+                  dur="0.5s"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+              </ellipse>
+              <ellipse
+                class="ring"
+                :class="{ chase: motion(draft.ring, 'ring') === 'chase' }"
+                :cx="cup.cx"
+                :cy="CY"
+                rx="43"
+                ry="54"
+                :stroke="draft.ring.colours[0]"
+              >
+                <animate
+                  v-if="motion(draft.ring, 'ring') === 'fade'"
+                  attributeName="stroke"
+                  :values="cycle(draft.ring)"
+                  :dur="`${draft.ring.colours.length * 1.6}s`"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.ring, 'ring') === 'step' || motion(draft.ring, 'ring') === 'chase'"
+                  attributeName="stroke"
+                  :values="cycle(draft.ring)"
+                  :dur="`${draft.ring.colours.length * 0.6}s`"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.ring, 'ring') === 'spectrum'"
+                  attributeName="stroke"
+                  :values="SPECTRUM"
+                  dur="6s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-if="motion(draft.ring, 'ring') === 'blink'"
+                  attributeName="opacity"
+                  values="1;0.12"
+                  dur="0.5s"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-if="motion(draft.ring, 'ring') === 'chase'"
+                  attributeName="stroke-dashoffset"
+                  values="0;-60"
+                  dur="1.2s"
+                  repeatCount="indefinite"
+                />
+              </ellipse>
+            </template>
+            <ellipse v-else class="ring unlit" :cx="cup.cx" :cy="CY" rx="43" ry="54" />
 
-          <template v-if="lit && draft">
-            <rect
-              class="logo-glow"
-              :x="cup.cx - 15"
-              :y="CY - 5"
-              width="30"
-              height="10"
-              rx="5"
-              filter="url(#glow)"
-              :fill="draft.logo.colours[0]"
-              :opacity="glowOpacity(draft.logo)"
-            />
-            <rect class="logo" :x="cup.cx - 13" :y="CY - 3.5" width="26" height="7" rx="3.5" :fill="draft.logo.colours[0]">
-              <animate
-                v-if="motion(draft.logo, 'logo') === 'fade'"
-                attributeName="fill"
-                :values="cycle(draft.logo)"
-                :dur="`${draft.logo.colours.length * 1.6}s`"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.logo, 'logo') === 'step'"
-                attributeName="fill"
-                :values="cycle(draft.logo)"
-                :dur="`${draft.logo.colours.length * 0.6}s`"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-else-if="motion(draft.logo, 'logo') === 'spectrum'"
-                attributeName="fill"
-                :values="SPECTRUM"
-                dur="4s"
-                repeatCount="indefinite"
-              />
-              <animate
-                v-if="motion(draft.logo, 'logo') === 'blink'"
-                attributeName="opacity"
-                values="1;0.12"
-                dur="0.4s"
-                calcMode="discrete"
-                repeatCount="indefinite"
-              />
-            </rect>
-          </template>
-          <rect v-else class="logo unlit" :x="cup.cx - 13" :y="CY - 3.5" width="26" height="7" rx="3.5" />
-        </g>
+            <!-- Earcup Faceplate & Industrial Fasteners -->
+            <ellipse class="cap" :cx="cup.cx" :cy="CY" rx="34" ry="44" />
+            <ellipse class="cap-inset" :cx="cup.cx" :cy="CY" rx="28" ry="37" />
+            <circle class="fastener" :cx="cup.cx - 24" :cy="CY - 31" r="1.5" fill="#4f5665" />
+            <circle class="fastener" :cx="cup.cx + 24" :cy="CY + 31" r="1.5" fill="#4f5665" />
 
-        <!-- Controls on the cups -->
-        <rect class="part" x="51" y="139" width="7" height="22" rx="2.5" />
-        <g class="part">
-          <rect x="340" y="183" width="8" height="26" rx="3" />
-          <line x1="341.5" y1="188" x2="346.5" y2="188" />
-          <line x1="341.5" y1="193" x2="346.5" y2="193" />
-          <line x1="341.5" y1="198" x2="346.5" y2="198" />
-          <line x1="341.5" y1="203" x2="346.5" y2="203" />
-        </g>
+            <!-- JBL Branded Logo Plate with Glow -->
+            <template v-if="lit && draft">
+              <rect
+                class="logo-glow"
+                :x="cup.cx - 16"
+                :y="CY - 6"
+                width="32"
+                height="12"
+                rx="6"
+                filter="url(#glow)"
+                :fill="draft.logo.colours[0]"
+                :opacity="glowOpacity(draft.logo)"
+              />
+              <rect class="logo" :x="cup.cx - 14" :y="CY - 4.5" width="28" height="9" rx="4.5" :fill="draft.logo.colours[0]">
+                <animate
+                  v-if="motion(draft.logo, 'logo') === 'fade'"
+                  attributeName="fill"
+                  :values="cycle(draft.logo)"
+                  :dur="`${draft.logo.colours.length * 1.6}s`"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.logo, 'logo') === 'step'"
+                  attributeName="fill"
+                  :values="cycle(draft.logo)"
+                  :dur="`${draft.logo.colours.length * 0.6}s`"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-else-if="motion(draft.logo, 'logo') === 'spectrum'"
+                  attributeName="fill"
+                  :values="SPECTRUM"
+                  dur="4s"
+                  repeatCount="indefinite"
+                />
+                <animate
+                  v-if="motion(draft.logo, 'logo') === 'blink'"
+                  attributeName="opacity"
+                  values="1;0.12"
+                  dur="0.4s"
+                  calcMode="discrete"
+                  repeatCount="indefinite"
+                />
+              </rect>
+            </template>
+            <!-- Default unlit JBL pill logo plate -->
+            <rect v-else class="logo unlit" :x="cup.cx - 14" :y="CY - 4.5" width="28" height="9" rx="4.5" />
+          </g>
 
-        <!-- Where each leader meets its part -->
-        <g class="anchors">
-          <circle class="anchor" :class="{ on: active('sound') }" cx="54" cy="150" r="2.5" />
-          <circle v-if="active('sound')" class="halo" cx="54" cy="150" r="11" />
-          <circle class="anchor" :class="{ on: active('lights') }" cx="322" cy="133" r="2.5" />
-          <circle v-if="active('lights')" class="halo" cx="322" cy="133" r="11" />
-          <circle class="anchor" :class="{ on: active('eq') }" cx="54" cy="196" r="2.5" />
-          <circle v-if="active('eq')" class="halo" cx="54" cy="196" r="11" />
-        </g>
+          <!-- On-Ear Controls (Volume Wheel & Mute Button) -->
+          <rect class="part" x="50" y="138" width="8" height="24" rx="3" transform="rotate(15 54 150)" />
+          <g class="part" transform="rotate(17 344 196)">
+            <rect x="339" y="181" width="10" height="28" rx="3.5" />
+            <line x1="341" y1="187" x2="347" y2="187" stroke="#ff5500" stroke-width="1.2" />
+            <line x1="341" y1="192" x2="347" y2="192" stroke="#ff5500" stroke-width="1.2" />
+            <line x1="341" y1="197" x2="347" y2="197" stroke="#ff5500" stroke-width="1.2" />
+            <line x1="341" y1="202" x2="347" y2="202" stroke="#ff5500" stroke-width="1.2" />
+          </g>
+
+          <!-- Leader Anchors & Pulsing Halos -->
+          <g class="anchors">
+            <circle class="anchor" :class="{ on: active('sound') }" cx="54" cy="150" r="3" />
+            <circle v-if="active('sound')" class="halo" cx="54" cy="150" r="12" />
+            <circle class="anchor" :class="{ on: active('lights') }" cx="322" cy="133" r="3" />
+            <circle v-if="active('lights')" class="halo" cx="322" cy="133" r="12" />
+            <circle class="anchor" :class="{ on: active('eq') }" cx="54" cy="196" r="3" />
+            <circle v-if="active('eq')" class="halo" cx="54" cy="196" r="12" />
+          </g>
         </g>
       </svg>
 
-      <!-- Callouts: HTML, so they are real text and real buttons. -->
+      <!-- HTML Callouts & Interactive Buttons -->
       <button
         class="callout tl"
         :class="{ on: active('sound') }"
