@@ -51,7 +51,7 @@ report it makes is what you paste into an issue.
 ### Arch / CachyOS / Manjaro
 
 Download the `.pkg.tar.zst` from the
-[latest release](https://github.com/sidmax7/QuantumEngine/releases/latest) and
+[latest release](https://github.com/DefSteam/QuantumEngine/releases/latest) and
 install it:
 
 ```sh
@@ -179,8 +179,11 @@ On Windows, you set the headset to 7.1 in the sound settings and JBL's
 software turns the eight channels into 3D sound for headphones. QuantumEngine
 does the same with PipeWire. Switch on **Virtual surround 7.1** (in the
 window's Sound section, the tray menu, or `quantumenginectl surround on`) and
-it adds a 7.1 output called "QuantumEngine Surround 7.1" and makes it your
-default. Switching it off makes the headset the default again.
+WirePlumber applies the processing transparently to the JBL Game output. The
+Game output stays selected in KDE, so there is no extra output to switch to;
+the Chat output is unaffected. Keep **Show virtual devices** off in the KDE
+tray to show only the active Game and Chat outputs. This setting is under the
+tray widget's menu; turning it off hides internal processing filters too.
 
 Games then see a 7.1 device: pick 7.1 or surround in their audio settings
 where they offer it. Stereo plays from two virtual speakers in front of you.
@@ -208,6 +211,14 @@ code or data:
 It needs PipeWire's convolver, which comes with `pipewire-audio`, and
 libmysofa. It won't sound exactly like JBL's processing, whose head-model data
 and DTS stage are theirs and stay out of this project.
+
+The Sound panel also has four saved rendering profiles: **Default** keeps the
+original values, while **Wide**, **Room**, and **Clear** are starting points
+you can adjust. Spatial cues scales the left/right differences from KEMAR's
+head measurements; early reflections, room ambience, and reverb decay shape
+the simulated room. Values are starting points rather than a claim of
+personalised HRTF calibration. Changes are saved per profile and rebuild the
+filters; changing them while surround is enabled may take a moment.
 
 ## Updates
 

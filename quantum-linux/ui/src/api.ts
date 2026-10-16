@@ -8,6 +8,7 @@ export type Info = Omit<InfoDto, "eqFrequencies"> & { eqFrequencies: number[] };
 
 /** `BandDto` with its numbers non-null. */
 export type Band = { kind: string; freq: number; gain: number; q: number };
+export type SurroundProfile = { spatialCues: number; reflections: number; ambience: number; decayMs: number };
 
 type Outcome<T> = { status: "ok"; data: T } | { status: "error"; error: string };
 
@@ -45,6 +46,11 @@ export const api = {
   endEqPreview: () => unwrap(commands.endEqPreview()),
   importEqProfile: () => unwrap(commands.importEqProfile()),
   setSurround: (on: boolean) => unwrap(commands.setSurroundEnabled(on)),
+  setSurroundOutputGain: (percent: number) => unwrap(commands.setSurroundOutputGain(percent)),
+  playSurroundSpeakerTest: (speaker: string) => unwrap(commands.playSurroundSpeakerTest(speaker)),
+  setSurroundProfile: (name: string) => unwrap(commands.setSurroundProfile(name)),
+  tuneSurroundProfile: (name: string, profile: SurroundProfile) =>
+    unwrap(commands.tuneSurroundProfile(name, profile.spatialCues, profile.reflections, profile.ambience, profile.decayMs)),
   probeUnverified: () => unwrap(commands.probeUnverified()),
   setUnverified: (inUse: boolean, allowed: string[]) => unwrap(commands.setUnverified(inUse, allowed)),
   grantUnverifiedAccess: () => unwrap(commands.grantUnverifiedAccess()),

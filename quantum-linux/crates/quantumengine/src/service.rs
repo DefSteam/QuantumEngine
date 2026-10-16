@@ -158,7 +158,13 @@ fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
             custom: get(take("EqCustomProfiles")),
             previewing: get(take("EqPreviewing")),
         },
-        surround: SurroundDto { enabled: get(take("SurroundEnabled")), status: get(take("SurroundStatus")) },
+        surround: SurroundDto {
+            enabled: get(take("SurroundEnabled")),
+            output_gain: get(take("SurroundOutputGain")),
+            profile: get(take("SurroundProfile")),
+            profiles: get(take("SurroundProfiles")),
+            status: get(take("SurroundStatus")),
+        },
         unverified: UnverifiedDto {
             id: get(take("UnverifiedDevice")),
             name: get(take("UnverifiedName")),

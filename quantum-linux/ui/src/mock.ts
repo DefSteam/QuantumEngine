@@ -81,7 +81,18 @@ function scenarioState(scenario: string): StateDto {
             custom: ["Night Curve"],
             previewing: false,
           },
-    surround: { enabled: false, status: "" },
+    surround: {
+      enabled: false,
+      outputGain: 150,
+      profile: "Default",
+      profiles: JSON.stringify({
+        Default: { spatialCues: 100, reflections: 45, ambience: 10, decayMs: 280 },
+        Wide: { spatialCues: 125, reflections: 45, ambience: 15, decayMs: 320 },
+        Room: { spatialCues: 105, reflections: 60, ambience: 22, decayMs: 420 },
+        Clear: { spatialCues: 110, reflections: 25, ambience: 3, decayMs: 180 },
+      }),
+      status: "",
+    },
     unverified: unverified
       ? { id: "0ecb:203e", name: "JBL Quantum800 Wireless", access: scenario === "unverifiedAccess" ? "cannot open /dev/hidraw3: Permission denied (os error 13)" : "", inUse: using, allowed: using ? ["anc"] : [] }
       : { id: "", name: "", access: "", inUse: false, allowed: [] },
@@ -179,6 +190,30 @@ export function installMock(scenario: string) {
         case "set_surround_enabled":
           await change((s) => (s.surround.enabled = a.enabled as boolean), 500);
           return a.enabled;
+        case "set_surround_output_gain":
+          await change((s) => (s.surround.outputGain = a.percent as number), 300);
+          return a.percent;
+        case "play_surround_speaker_test":
+          if (!state.surround.enabled) throw new Error("Turn on Virtual surround 7.1 before testing its speakers.");
+          await new Promise((resolve) => window.setTimeout(resolve, 900));
+          return null;
+        case "set_surround_profile":
+          await change((s) => (s.surround.profile = a.name as string), 250);
+          return a.name;
+        case "tune_surround_profile": {
+          const name = a.name as string;
+          await change((s) => {
+            const profiles = JSON.parse(s.surround.profiles) as Record<string, Record<string, number>>;
+            profiles[name] = {
+              spatialCues: a.spatialCues as number,
+              reflections: a.reflections as number,
+              ambience: a.ambience as number,
+              decayMs: a.decayMs as number,
+            };
+            s.surround.profiles = JSON.stringify(profiles);
+          }, 350);
+          return null;
+        }
         case "eq_profile_bands": {
           const name = a.name as string;
           if (custom[name]) return custom[name];

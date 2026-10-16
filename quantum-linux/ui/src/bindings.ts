@@ -48,8 +48,12 @@ export const commands = {
 	 *  cancelled.
 	 */
 	importEqProfile: () => typedError<string | null, string>(__TAURI_INVOKE("import_eq_profile")),
-	/**  Virtual 7.1 surround; on also makes it the default output. */
+	/**  Virtual 7.1 processing applied transparently to the JBL Game output. */
 	setSurroundEnabled: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_surround_enabled", { enabled })),
+	setSurroundOutputGain: (percent: number) => typedError<number, string>(__TAURI_INVOKE("set_surround_output_gain", { percent })),
+	playSurroundSpeakerTest: (speaker: string) => typedError<null, string>(__TAURI_INVOKE("play_surround_speaker_test", { speaker })),
+	setSurroundProfile: (name: string) => typedError<string, string>(__TAURI_INVOKE("set_surround_profile", { name })),
+	tuneSurroundProfile: (name: string, spatialCues: number, reflections: number, ambience: number, decayMs: number) => typedError<null, string>(__TAURI_INVOKE("tune_surround_profile", { name, spatialCues, reflections, ambience, decayMs })),
 	/**  Reads what an unverified model answers to, as text to paste into an issue. */
 	probeUnverified: () => typedError<string, string>(__TAURI_INVOKE("probe_unverified")),
 	/**  Chooses whether to use the unverified model, and which writes to allow. */
@@ -185,6 +189,10 @@ export type StateEvent = StateDto;
 /**  Virtual 7.1 surround, rendered on this PC. */
 export type SurroundDto = {
 	enabled: boolean,
+	outputGain: number,
+	profile: string,
+	/**  JSON mapping profile names to their four rendering values. */
+	profiles: string,
 	/**  Why it isn't working, or empty. */
 	status: string,
 };

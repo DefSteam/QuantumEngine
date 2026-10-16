@@ -275,11 +275,37 @@ pub trait Headset {
     #[zbus(property)]
     fn surround_enabled(&self) -> zbus::Result<bool>;
 
+    #[zbus(property)]
+    fn surround_output_gain(&self) -> zbus::Result<u16>;
+
     /// Why surround isn't working (e.g. the dongle is unplugged), or empty.
     #[zbus(property)]
     fn surround_status(&self) -> zbus::Result<String>;
 
+    /// Selected surround profile name.
+    #[zbus(property)]
+    fn surround_profile(&self) -> zbus::Result<String>;
+
+    /// JSON object mapping profile names to their rendering values.
+    #[zbus(property)]
+    fn surround_profiles(&self) -> zbus::Result<String>;
+
     fn set_surround_enabled(&self, enabled: bool) -> zbus::Result<bool>;
+
+    fn set_surround_output_gain(&self, percent: u16) -> zbus::Result<u16>;
+
+    fn play_surround_speaker_test(&self, speaker: &str) -> zbus::Result<()>;
+
+    fn set_surround_profile(&self, name: &str) -> zbus::Result<String>;
+
+    fn tune_surround_profile(
+        &self,
+        name: &str,
+        spatial_cues: u8,
+        reflections: u8,
+        ambience: u8,
+        decay_ms: u16,
+    ) -> zbus::Result<()>;
 
     // Updates from GitHub releases.
 

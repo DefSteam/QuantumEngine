@@ -133,6 +133,22 @@ pub fn set_default(id: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Enable or disable a smart filter while keeping its PipeWire node alive.
+pub fn set_smart_filter_enabled(node_name: &str, enabled: bool) -> Result<(), String> {
+    let Some(id) = node_id(node_name)? else { return Ok(()); };
+    let id = id.to_string();
+    let disabled = if enabled { "false" } else { "true" };
+    let out = Command::new("pw-metadata")
+        .args(["-n", "filters", id.as_str(), "filter.smart.disabled", disabled, "Spa:String:JSON"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("cannot run pw-metadata: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("pw-metadata could not update the surround filter: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    Ok(())
+}
+
 /// A string in PipeWire's config syntax.
 pub fn quoted(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))

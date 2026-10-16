@@ -24,6 +24,7 @@
 
 use rustfft::num_complex::Complex32;
 use rustfft::FftPlanner;
+use crate::settings::SurroundProfile;
 use std::ffi::CString;
 use std::io::Write as _;
 use std::path::Path;
@@ -38,15 +39,8 @@ const ROOM: [f64; 3] = [6.0, 5.0, 3.0];
 const LISTENER: [f64; 3] = [2.6, 2.4, 1.2];
 /// How far the virtual speakers are from the listener, in metres.
 const SPEAKER_DISTANCE: f64 = 2.0;
-/// Pressure reflected per bounce (absorption 1 - 0.45² ≈ 80%): a furnished
-/// room, so positions stay sharp enough for games.
-const WALL_REFLECTION: f64 = 0.45;
 const SPEED_OF_SOUND: f64 = 343.0;
-/// Late tail: decay time to -60 dB, where it starts, and its energy relative
-/// to the direct sound.
-const RT60: f64 = 0.28;
 const TAIL_START: f64 = 0.018;
-const TAIL_ENERGY: f64 = 0.10;
 /// Diffuse-field correction limits, in dB, and the band it works in; outside
 /// it the correction is held flat.
 const EQ_MAX_CUT: f64 = -18.0;
@@ -157,21 +151,25 @@ pub struct Brir {
 
 /// Builds the BRIRs for speakers at the given azimuths (degrees, SOFA
 /// convention) from the HRTF set at `hrtf_path`.
-pub fn build(hrtf_path: &Path, azimuths: &[f64]) -> Result<Vec<Brir>, String> {
+pub fn build(hrtf_path: &Path, azimuths: &[f64], profile: &SurroundProfile) -> Result<Vec<Brir>, String> {
     let hrtf = Hrtf::open(hrtf_path)?;
     let eq = diffuse_field_inverse(&hrtf);
-    let mut brirs: Vec<Brir> =
-        azimuths.iter().enumerate().map(|(i, &az)| room_response(&hrtf, az, 0x9E37_79B9 ^ (i as u64 + 1))).collect();
+    let mut brirs: Vec<Brir> = azimuths
+        .iter()
+        .enumerate()
+        .map(|(i, &az)| room_response(&hrtf, az, 0x9E37_79B9 ^ (i as u64 + 1), profile))
+        .collect();
     for b in &mut brirs {
         b.left = convolve(&b.left, &eq);
         b.right = convolve(&b.right, &eq);
+        strengthen_spatial_cues(b, f32::from(profile.spatial_cues) / 100.0);
     }
     Ok(brirs)
 }
 
 /// The direct sound, the early reflections and the late tail for a speaker
 /// at `az`, `SPEAKER_DISTANCE` away at ear height.
-fn room_response(hrtf: &Hrtf, az: f64, seed: u64) -> Brir {
+fn room_response(hrtf: &Hrtf, az: f64, seed: u64, profile: &SurroundProfile) -> Brir {
     let mut left = vec![0f32; LENGTH];
     let mut right = vec![0f32; LENGTH];
     let a = az.to_radians();
@@ -187,7 +185,7 @@ fn room_response(hrtf: &Hrtf, az: f64, seed: u64) -> Brir {
         let distance = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
         let az = v[1].atan2(v[0]).to_degrees();
         let el = v[2].atan2(v[0].hypot(v[1])).to_degrees();
-        let gain = (WALL_REFLECTION.powi(order as i32) * SPEAKER_DISTANCE / distance) as f32;
+        let gain = ((f64::from(profile.reflections) / 100.0).powi(order as i32) * SPEAKER_DISTANCE / distance) as f32;
         let offset = ((distance - SPEAKER_DISTANCE) / SPEED_OF_SOUND * f64::from(RATE)).round() as usize;
         let (mut l, mut r) = hrtf.pair(az, el);
         // Walls absorb more treble than bass: darken each bounce a little.
@@ -210,17 +208,30 @@ fn room_response(hrtf: &Hrtf, az: f64, seed: u64) -> Brir {
     for ear in &mut tail {
         for (i, s) in ear.iter_mut().enumerate().skip(start) {
             let t = (i - start) as f64 / f64::from(RATE);
-            let decay = (-6.9078 * t / RT60).exp();
+            let decay = (-6.9078 * t / (f64::from(profile.decay_ms) / 1000.0)).exp();
             let ramp = ((i - start) as f64 / fade_in as f64).min(1.0);
             *s = (noise(&mut rng) * decay * ramp) as f32;
         }
         one_pole_lowpass(ear, 6_000.0);
     }
     let tail_energy: f64 = tail.iter().flatten().map(|x| f64::from(*x).powi(2)).sum();
-    let scale = if tail_energy > 0.0 { (TAIL_ENERGY * direct_energy / tail_energy).sqrt() as f32 } else { 0.0 };
+    let tail_energy_ratio = f64::from(profile.ambience) / 100.0;
+    let scale = if tail_energy > 0.0 { (tail_energy_ratio * direct_energy / tail_energy).sqrt() as f32 } else { 0.0 };
     add_at(&mut left, &tail[0], 0, scale);
     add_at(&mut right, &tail[1], 0, scale);
     Brir { left, right }
+}
+
+/// Scales the left/right difference around their shared component. This
+/// changes the strength of the KEMAR interaural cues without changing the
+/// average response or the source measurements.
+fn strengthen_spatial_cues(brir: &mut Brir, strength: f32) {
+    for (left, right) in brir.left.iter_mut().zip(&mut brir.right) {
+        let mid = (*left + *right) * 0.5;
+        let side = (*left - *right) * 0.5 * strength;
+        *left = mid + side;
+        *right = mid - side;
+    }
 }
 
 /// The source's mirror images in the room up to second order, with how many

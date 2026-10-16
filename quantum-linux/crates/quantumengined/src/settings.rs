@@ -30,10 +30,55 @@ pub struct UnverifiedChoice {
     pub allowed: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SurroundSettings {
     pub enabled: bool,
+    /// Slider percentage; the applied linear gain is twice this value (150 means 3x).
+    pub output_gain: u16,
+    #[serde(default = "default_surround_profile_name")]
+    pub profile: String,
+    #[serde(default = "default_surround_profiles")]
+    pub profiles: BTreeMap<String, SurroundProfile>,
+}
+
+impl Default for SurroundSettings {
+    fn default() -> Self {
+        Self { enabled: false, output_gain: 150, profile: "Default".into(), profiles: default_surround_profiles() }
+    }
+}
+
+/// User-adjustable rendering values applied to the KEMAR-derived filters.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SurroundProfile {
+    /// HRTF interaural difference strength, percent; 100 is the measured value.
+    pub spatial_cues: u8,
+    /// Early reflection pressure per bounce, percent.
+    pub reflections: u8,
+    /// Late reverberation energy relative to direct sound, percent.
+    pub ambience: u8,
+    /// Late reverberation decay time in milliseconds.
+    pub decay_ms: u16,
+}
+
+impl Default for SurroundProfile {
+    fn default() -> Self {
+        Self { spatial_cues: 100, reflections: 45, ambience: 10, decay_ms: 280 }
+    }
+}
+
+fn default_surround_profiles() -> BTreeMap<String, SurroundProfile> {
+    [
+        ("Default".into(), SurroundProfile::default()),
+        ("Wide".into(), SurroundProfile { spatial_cues: 125, reflections: 45, ambience: 15, decay_ms: 320 }),
+        ("Room".into(), SurroundProfile { spatial_cues: 105, reflections: 60, ambience: 22, decay_ms: 420 }),
+        ("Clear".into(), SurroundProfile { spatial_cues: 110, reflections: 25, ambience: 3, decay_ms: 180 }),
+    ].into_iter().collect()
+}
+
+fn default_surround_profile_name() -> String {
+    "Default".into()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

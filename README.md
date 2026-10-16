@@ -84,7 +84,7 @@ device ID after you enter your password. The same steps are available as
 ### Arch / CachyOS / EndeavourOS / Manjaro (Recommended)
 
 Download the `.pkg.tar.zst` from the
-[latest release](https://github.com/sidmax7/QuantumEngine/releases/latest) and
+[latest release](https://github.com/DefSteam/QuantumEngine/releases/latest) and
 install it:
 
 ```sh
@@ -94,7 +94,7 @@ sudo pacman -U quantumengine-*-x86_64.pkg.tar.zst
 Or build it from source with `makepkg`:
 
 ```sh
-git clone https://github.com/sidmax7/QuantumEngine.git
+git clone https://github.com/DefSteam/QuantumEngine.git
 cd QuantumEngine/quantum-linux/packaging
 makepkg -si
 ```
@@ -108,7 +108,7 @@ You need a Rust toolchain (1.88 or newer), Node.js with npm, and WebKitGTK 4.1
 (`webkit2gtk-4.1` on Arch, `libwebkit2gtk-4.1-dev` on Debian and Ubuntu).
 
 ```sh
-git clone https://github.com/sidmax7/QuantumEngine.git
+git clone https://github.com/DefSteam/QuantumEngine.git
 cd QuantumEngine/quantum-linux
 npm --prefix ui ci
 npm --prefix ui run build

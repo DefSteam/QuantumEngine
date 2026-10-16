@@ -10,6 +10,7 @@
 
 use crate::device::{self, Link, Shared};
 use crate::eq::{self, profiles::Correction};
+use crate::settings::SurroundProfile;
 use crate::surround;
 use crate::update;
 use jbl_quantum::{Anc, Colour, Effect, Sidetone, Zone, ZoneLighting, MAX_SLOTS};
@@ -291,12 +292,55 @@ impl HeadsetIface {
     }
 
     #[zbus(property)]
+    fn surround_output_gain(&self) -> u16 {
+        self.surround.state().output_gain
+    }
+
+    #[zbus(property)]
     fn surround_status(&self) -> String {
         self.surround.state().status
     }
 
+    #[zbus(property)]
+    fn surround_profile(&self) -> String {
+        self.surround.state().profile
+    }
+
+    #[zbus(property)]
+    fn surround_profiles(&self) -> fdo::Result<String> {
+        serde_json::to_string(&self.surround.state().profiles).map_err(|e| fdo::Error::Failed(e.to_string()))
+    }
+
     fn set_surround_enabled(&self, enabled: bool) -> fdo::Result<bool> {
         self.surround.call(|r| surround::Command::Enable(enabled, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn set_surround_output_gain(&self, percent: u16) -> fdo::Result<u16> {
+        self.surround.call(|r| surround::Command::SetOutputGain(percent, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn play_surround_speaker_test(&self, speaker: &str) -> fdo::Result<()> {
+        let speaker = speaker.to_string();
+        self.surround.call(|r| surround::Command::TestSpeaker(speaker, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn set_surround_profile(&self, name: &str) -> fdo::Result<String> {
+        let name = name.to_string();
+        self.surround.call(|r| surround::Command::SelectProfile(name, r)).map_err(fdo::Error::Failed)
+    }
+
+    fn tune_surround_profile(
+        &self,
+        name: &str,
+        spatial_cues: u8,
+        reflections: u8,
+        ambience: u8,
+        decay_ms: u16,
+    ) -> fdo::Result<()> {
+        let profile = SurroundProfile { spatial_cues, reflections, ambience, decay_ms };
+        self.surround
+            .call(|r| surround::Command::SetProfile(name.to_string(), profile, r))
+            .map_err(fdo::Error::Failed)
     }
 
     fn set_eq_correction(&self, correction: &str) -> fdo::Result<String> {

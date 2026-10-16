@@ -35,6 +35,7 @@ const PREVIEW_LEASE: Duration = Duration::from_secs(10 * 60);
 #[derive(Clone, Debug)]
 pub struct State {
     pub enabled: bool,
+    pub output_gain: u16,
     /// The selected profile's display name, built-in or custom.
     pub profile: String,
     pub correction: Correction,
@@ -72,6 +73,7 @@ pub type Reply<T> = Sender<Result<T, String>>;
 
 pub enum Command {
     Enable(bool, Reply<bool>),
+    OutputGain(u16),
     Profile(String, Reply<String>),
     Correction(Correction, Reply<Correction>),
     /// Saves a custom profile and selects it. `original` is the profile being
@@ -116,10 +118,13 @@ pub fn no_reply<T>() -> Reply<T> {
 
 /// Starts the EQ thread, applying the saved settings straight away.
 pub fn spawn(notifier: Notifier) -> Handle {
-    let saved = settings::load().eq;
+    let settings = settings::load();
+    let output_gain = settings.surround.output_gain;
+    let saved = settings.eq;
     let profile = find(&saved.profile, &saved.custom).map_or_else(|| PROFILES[0].name.to_string(), |(name, _)| name);
     let state = Arc::new(Mutex::new(State {
         enabled: saved.enabled,
+        output_gain,
         profile,
         correction: saved.correction,
         custom: saved.custom,
@@ -190,6 +195,9 @@ impl Worker {
 
     fn handle(&mut self, cmd: Command) {
         match cmd {
+            Command::OutputGain(percent) => {
+                self.state.lock().unwrap().output_gain = percent;
+            }
             Command::Enable(on, reply) => {
                 let result = self.save(|s| s.eq.enabled = on).map(|()| {
                     self.state.lock().unwrap().enabled = on;
@@ -319,9 +327,11 @@ impl Worker {
             self.apply();
             return;
         }
-        if !self.state.lock().unwrap().enabled {
+        let state = self.state.lock().unwrap();
+        if !state.enabled && state.output_gain == 50 {
             return;
         }
+        drop(state);
         if let Some(f) = &mut self.filter {
             if f.is_running() {
                 return;
@@ -336,12 +346,13 @@ impl Worker {
     /// Makes the filter match the current state.
     fn apply(&mut self) {
         let state = self.state.lock().unwrap().clone();
-        let status = if state.enabled {
+        let status = if state.enabled || state.output_gain != 50 {
             let bands = match &self.preview {
                 Some(b) => b.clone(),
                 None => state.find(&state.profile).map(|(_, b)| b).unwrap_or_default(),
             };
-            let chain = chain(state.correction, &bands);
+            let mut chain = chain(state.correction, &bands);
+            chain[SLOTS - 1] = chain[SLOTS - 1].scaled(f64::from(state.output_gain) / 50.0);
             if self.filter.as_mut().is_some_and(|f| !f.is_running()) {
                 self.filter = None;
             }

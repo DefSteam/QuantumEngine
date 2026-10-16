@@ -5,7 +5,7 @@
 
 import { defineStore } from "pinia";
 import { computed, ref, shallowRef } from "vue";
-import { api, type Band, type Info } from "../api";
+import { api, type Band, type Info, type SurroundProfile } from "../api";
 import type { LightingDto, StateDto, ZoneDto } from "../bindings";
 
 export type Section = "sound" | "lights" | "eq" | "device";
@@ -34,7 +34,7 @@ const EMPTY_STATE: StateDto = {
     lastError: "",
   },
   eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
-  surround: { enabled: false, status: "" },
+  surround: { enabled: false, outputGain: 150, profile: "Default", profiles: "", status: "" },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
   unverified: { id: "", name: "", access: "", inUse: false, allowed: [] },
 };
@@ -230,6 +230,11 @@ export const useApp = defineStore("app", () => {
   const setUnverified = (inUse: boolean, allowed: string[]) => run("unverified:set", () => api.setUnverified(inUse, allowed));
   const grantAccess = () => run("unverified:grant", () => api.grantUnverifiedAccess());
   const setSurround = (on: boolean) => run(`surround:${on}`, () => api.setSurround(on));
+  const setSurroundOutputGain = (percent: number) => run(`surround-gain:${percent}`, () => api.setSurroundOutputGain(percent));
+  const playSurroundSpeakerTest = (speaker: string) => run(`surround-test:${speaker}`, () => api.playSurroundSpeakerTest(speaker));
+  const setSurroundProfile = (name: string) => run(`surround-profile:${name}`, () => api.setSurroundProfile(name));
+  const tuneSurroundProfile = (name: string, profile: SurroundProfile) =>
+    run(`surround-tune:${name}`, () => api.tuneSurroundProfile(name, profile));
   const checkForUpdates = () => run("update:check", () => api.checkForUpdates());
   const installUpdate = () => run("update:install", () => api.installUpdate());
   const restartService = () => run("service:restart", () => api.restartService());
@@ -282,6 +287,10 @@ export const useApp = defineStore("app", () => {
     setEqProfile,
     setEqCorrection,
     setSurround,
+    setSurroundOutputGain,
+    playSurroundSpeakerTest,
+    setSurroundProfile,
+    tuneSurroundProfile,
     probeText,
     probeUnverified,
     setUnverified,

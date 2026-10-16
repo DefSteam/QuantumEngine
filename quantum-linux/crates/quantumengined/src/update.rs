@@ -462,7 +462,7 @@ mod tests {
     fn release_picks_this_architectures_package_and_its_checksum() {
         let json = r#"{
             "tag_name": "v0.3.0",
-            "html_url": "https://github.com/sidmax7/QuantumEngine/releases/tag/v0.3.0",
+            "html_url": "https://github.com/DefSteam/QuantumEngine/releases/tag/v0.3.0",
             "assets": [
                 { "name": "PKGBUILD", "browser_download_url": "https://x/PKGBUILD" },
                 { "name": "quantumengine-debug-0.3.0-1-x86_64.pkg.tar.zst", "browser_download_url": "https://x/debug" },

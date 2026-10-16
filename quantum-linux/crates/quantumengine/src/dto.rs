@@ -52,6 +52,10 @@ pub struct UnverifiedDto {
 #[serde(rename_all = "camelCase")]
 pub struct SurroundDto {
     pub enabled: bool,
+    pub output_gain: u16,
+    pub profile: String,
+    /// JSON mapping profile names to their four rendering values.
+    pub profiles: String,
     /// Why it isn't working, or empty.
     pub status: String,
 }
@@ -158,7 +162,7 @@ impl Default for StateDto {
                 custom: Vec::new(),
                 previewing: false,
             },
-            surround: SurroundDto { enabled: false, status: String::new() },
+            surround: SurroundDto { enabled: false, output_gain: 150, profile: "Default".into(), profiles: String::new(), status: String::new() },
             unverified: UnverifiedDto {
                 id: String::new(),
                 name: String::new(),

@@ -213,11 +213,42 @@ pub async fn grant_unverified_access(link: Shared<'_>) -> Result<()> {
     with_proxy(&link, |p| p.grant_unverified_access()).await
 }
 
-/// Virtual 7.1 surround; on also makes it the default output.
+/// Virtual 7.1 processing applied transparently to the JBL Game output.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_surround_enabled(link: Shared<'_>, enabled: bool) -> Result<bool> {
     with_proxy(&link, move |p| p.set_surround_enabled(enabled)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_surround_output_gain(link: Shared<'_>, percent: u16) -> Result<u16> {
+    with_proxy(&link, move |p| p.set_surround_output_gain(percent)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn play_surround_speaker_test(link: Shared<'_>, speaker: String) -> Result<()> {
+    with_proxy(&link, move |p| p.play_surround_speaker_test(&speaker)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_surround_profile(link: Shared<'_>, name: String) -> Result<String> {
+    with_proxy(&link, move |p| p.set_surround_profile(&name)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn tune_surround_profile(
+    link: Shared<'_>,
+    name: String,
+    spatial_cues: u8,
+    reflections: u8,
+    ambience: u8,
+    decay_ms: u16,
+) -> Result<()> {
+    with_proxy(&link, move |p| p.tune_surround_profile(&name, spatial_cues, reflections, ambience, decay_ms)).await
 }
 
 /// The curve of `profile` under `correction`, in dB at each of
