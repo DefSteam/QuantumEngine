@@ -23,9 +23,17 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install tools
-        run: pacman -Syu --noconfirm --needed git github-cli pacman-contrib
+        # JavaScript actions (including checkout) need Node inside this job
+        # container. Keep the build user tooling explicit as well.
+        run: pacman -Syu --noconfirm --needed git github-cli pacman-contrib nodejs
 
       - uses: actions/checkout@v4
+
+      - name: Point the package recipe at this repository
+        shell: bash
+        run: |
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          sed -i "s|^url=.*|url=\"$repo_url\"|" quantum-linux/packaging/PKGBUILD
 
       - name: Check the tag matches the version
         shell: bash
@@ -49,8 +57,8 @@ jobs:
           install -d -o builder /home/builder/pkg
           install -o builder -m644 quantum-linux/packaging/PKGBUILD /home/builder/pkg/
           cd /home/builder/pkg
-          sudo -u builder updpkgsums
-          sudo -u builder makepkg --noconfirm
+          runuser -u builder -- updpkgsums
+          runuser -u builder -- makepkg --noconfirm
           for f in *.pkg.tar.zst; do sha256sum "$f" > "$f.sha256"; done
           ls -l
 
