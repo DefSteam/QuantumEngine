@@ -706,7 +706,7 @@ mod live_tests {
         let azimuths: Vec<f64> = SPEAKERS.iter().map(|(_, az)| *az).collect();
         let wav = pwgraph::runtime_dir().join("quantumengine_surround_test_brir.wav");
         brir::write_wav(&wav, &brir::build(Path::new(HRTF), &azimuths, &SurroundProfile::default()).unwrap()).unwrap();
-        let graph = Graph::start(name, "the test surround filter", &config(name, &target, &wav, false)).unwrap();
+        let graph = Graph::start(name, "the test surround filter", &config(name, target, &wav, false)).unwrap();
         let found = pwgraph::find_node(|p| p["node.name"] == name && p["audio.channels"] == 8).unwrap();
         assert!(found.is_some(), "an 8-channel sink called {name}");
         drop(graph);
