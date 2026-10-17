@@ -1,4 +1,5 @@
 /target
+/.ci-cache/
 # Written by tauri-build on every build.
 /crates/quantumengine/gen/
 # Impeccable (design tooling) working files; the surface briefs and

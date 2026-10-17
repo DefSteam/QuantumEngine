@@ -10,6 +10,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    env:
+      CARGO_HOME: ${{ github.workspace }}/quantum-linux/.ci-cache/cargo
     defaults:
       run:
         working-directory: quantum-linux
@@ -20,15 +22,48 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: Select package cache window
+        id: package-cache
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Arch package downloads
+        uses: actions/cache@v4
+        with:
+          path: quantum-linux/.ci-cache/pacman
+          key: ${{ runner.os }}-${{ runner.arch }}-pacman-${{ steps.package-cache.outputs.month }}-${{ hashFiles('quantum-linux/packaging/PKGBUILD') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-pacman-${{ steps.package-cache.outputs.month }}-
+            ${{ runner.os }}-${{ runner.arch }}-pacman-
+
+      - name: Prepare shared Cargo cache directory
+        run: mkdir -p "$CARGO_HOME"
+
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: quantum-linux/ui/.npm-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-npm-${{ hashFiles('quantum-linux/ui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-npm-
+
+      - name: Cache Rust dependencies and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: quantum-linux -> target
+          cache-directories: ${{ github.workspace }}/quantum-linux/.ci-cache/cargo
+          shared-key: quantumengine-arch-${{ runner.arch }}
+          add-job-id-key: false
+
       - name: Install build dependencies
         shell: bash
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/pacman"
           source packaging/PKGBUILD
-          pacman -S --noconfirm --needed "${depends[@]}" "${makedepends[@]}"
+          pacman -S --noconfirm --needed --cachedir "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/pacman" "${depends[@]}" "${makedepends[@]}"
 
       - name: Interface (typecheck and build)
         run: |
-          npm --prefix ui ci --no-audit --no-fund
+          npm --prefix ui ci --cache ui/.npm-cache --no-audit --no-fund
           npm --prefix ui run build
 
       - name: Clippy

@@ -1,6 +1,6 @@
 # Maintainer: sidmax
 pkgname=quantumengine
-pkgver=0.4.10
+pkgver=0.4.11
 pkgrel=1
 pkgdesc="Control JBL Quantum 810 Wireless headsets: ANC, sidetone, lighting, EQ, virtual surround (GUI, tray, Plasma widget, CLI)"
 arch=('x86_64' 'aarch64')
@@ -44,7 +44,7 @@ build() {
   # quantumengine binary below.
   npm --prefix ui run build
   export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR=target
+  export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
   cargo build --frozen --release --workspace --features quantumengine/custom-protocol
 }
 
@@ -56,9 +56,10 @@ check() {
 
 package() {
   cd "$_srcdir"
-  install -Dm755 target/release/quantumenginectl -t "$pkgdir/usr/bin/"
-  install -Dm755 target/release/quantumengine -t "$pkgdir/usr/bin/"
-  install -Dm755 target/release/quantumengined -t "$pkgdir/usr/bin/"
+  local target_dir="${CARGO_TARGET_DIR:-target}"
+  install -Dm755 "$target_dir/release/quantumenginectl" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$target_dir/release/quantumengine" -t "$pkgdir/usr/bin/"
+  install -Dm755 "$target_dir/release/quantumengined" -t "$pkgdir/usr/bin/"
   install -Dm644 packaging/quantumengine.desktop -t "$pkgdir/usr/share/applications/"
   # Starts the tray icon and headset service at login; users can switch it
   # off in their desktop's autostart settings.

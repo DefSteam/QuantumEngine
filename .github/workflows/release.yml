@@ -21,6 +21,8 @@ jobs:
   package:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    env:
+      CARGO_HOME: ${{ github.workspace }}/quantum-linux/.ci-cache/cargo
     steps:
       - name: Install tools
         # JavaScript actions (including checkout) need Node inside this job
@@ -28,6 +30,38 @@ jobs:
         run: pacman -Syu --noconfirm --needed git github-cli pacman-contrib nodejs
 
       - uses: actions/checkout@v4
+
+      - name: Select package cache window
+        id: package-cache
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Arch package downloads
+        uses: actions/cache@v4
+        with:
+          path: quantum-linux/.ci-cache/pacman
+          key: ${{ runner.os }}-${{ runner.arch }}-pacman-${{ steps.package-cache.outputs.month }}-${{ hashFiles('quantum-linux/packaging/PKGBUILD') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-pacman-${{ steps.package-cache.outputs.month }}-
+            ${{ runner.os }}-${{ runner.arch }}-pacman-
+
+      - name: Prepare shared Cargo cache directory
+        run: mkdir -p "$CARGO_HOME"
+
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: quantum-linux/ui/.npm-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-npm-${{ hashFiles('quantum-linux/ui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-npm-
+
+      - name: Cache Rust dependencies and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: quantum-linux -> target
+          cache-directories: ${{ github.workspace }}/quantum-linux/.ci-cache/cargo
+          shared-key: quantumengine-arch-${{ runner.arch }}
+          add-job-id-key: false
 
       - name: Point the package recipe at this repository
         shell: bash
@@ -46,8 +80,9 @@ jobs:
       - name: Install build dependencies
         shell: bash
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/pacman"
           source quantum-linux/packaging/PKGBUILD
-          pacman -S --noconfirm --needed "${depends[@]}" "${makedepends[@]}"
+          pacman -S --noconfirm --needed --cachedir "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/pacman" "${depends[@]}" "${makedepends[@]}"
 
       # makepkg refuses to run as root.
       - name: Build the package
@@ -55,10 +90,16 @@ jobs:
         run: |
           useradd --create-home builder
           install -d -o builder /home/builder/pkg
+          install -d -o builder -g builder "$GITHUB_WORKSPACE/quantum-linux/target" "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/cargo" "$GITHUB_WORKSPACE/quantum-linux/ui/.npm-cache"
+          chown -R builder:builder "$GITHUB_WORKSPACE/quantum-linux/target" "$GITHUB_WORKSPACE/quantum-linux/.ci-cache/cargo" "$GITHUB_WORKSPACE/quantum-linux/ui/.npm-cache"
           install -o builder -m644 quantum-linux/packaging/PKGBUILD /home/builder/pkg/
           cd /home/builder/pkg
           runuser -u builder -- updpkgsums
-          runuser -u builder -- makepkg --noconfirm
+          runuser -u builder -- env \
+            CARGO_HOME="$GITHUB_WORKSPACE/quantum-linux/.ci-cache/cargo" \
+            CARGO_TARGET_DIR="$GITHUB_WORKSPACE/quantum-linux/target" \
+            NPM_CONFIG_CACHE="$GITHUB_WORKSPACE/quantum-linux/ui/.npm-cache" \
+            makepkg --noconfirm
           for f in *.pkg.tar.zst; do sha256sum "$f" > "$f.sha256"; done
           ls -l
 

@@ -13,7 +13,7 @@
         "Id": "org.quantumengine.plasmoid",
         "License": "MIT OR Apache-2.0",
         "Name": "QuantumEngine",
-        "Version": "0.4.10",
+        "Version": "0.4.11",
         "Website": "https://github.com/DefSteam/QuantumEngine"
     },
     "X-Plasma-API": "declarativeappletscript",

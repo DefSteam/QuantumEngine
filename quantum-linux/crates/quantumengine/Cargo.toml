@@ -20,8 +20,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
 # The file chooser for importing EQ curves; called from Rust only.
 tauri-plugin-dialog = "2"
-# Reopens the window at the size, position and maximized state it was closed in.
-tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
