@@ -210,17 +210,33 @@ PlasmoidItem {
                 root.errorText = data["exit code"] === 0
                     ? ""
                     : String(data.stderr).replace(/^quantumenginectl: /, "").trim();
+                root.statusSince = Date.now();
                 connectSource(root.statusCommand);
             }
         }
     }
+
+    // When the running status request started. Asking again while it runs
+    // does nothing, so one that never finished would leave the widget on
+    // "Starting…" for good; after this long it is dropped and asked afresh.
+    property double statusSince: 0
+    readonly property int statusGiveUpMs: 30000
 
     Timer {
         interval: 2000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: executable.connectSource(root.statusCommand)
+        onTriggered: {
+            if (executable.connectedSources.indexOf(root.statusCommand) !== -1) {
+                if (Date.now() - root.statusSince < root.statusGiveUpMs) {
+                    return;
+                }
+                executable.disconnectSource(root.statusCommand);
+            }
+            root.statusSince = Date.now();
+            executable.connectSource(root.statusCommand);
+        }
     }
 
     compactRepresentation: MouseArea {

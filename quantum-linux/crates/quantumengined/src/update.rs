@@ -106,7 +106,10 @@ pub fn spawn(notifier: Notifier) -> Handle {
         status: String::new(),
         busy: false,
         checks_enabled: settings::load().updates.check,
-        pacman_owned: pacman_owned(),
+        // Found out on the update thread: `pacman -Qqo` reads every installed
+        // package's file list, which at login can take seconds, and this runs
+        // before the service starts answering on D-Bus.
+        pacman_owned: false,
     }));
     let (commands, rx) = mpsc::channel();
     let handle = Handle { state: state.clone(), commands };
@@ -129,6 +132,8 @@ struct Worker {
 
 impl Worker {
     fn run(mut self, commands: Receiver<Command>) {
+        let owned = pacman_owned();
+        self.set(|s| s.pacman_owned = owned);
         let mut next_check = Instant::now() + FIRST_CHECK_AFTER;
         loop {
             let wait = next_check.saturating_duration_since(Instant::now());

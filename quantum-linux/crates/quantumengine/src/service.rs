@@ -22,6 +22,8 @@ const RECONNECT_EVERY: Duration = Duration::from_secs(1);
 /// How long to wait for a `quantumengined` this window started to claim its
 /// bus name.
 const START_TIMEOUT: Duration = Duration::from_secs(5);
+/// The longest one D-Bus call may go unanswered.
+const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the commands share with the watcher thread.
 #[derive(Default)]
@@ -87,7 +89,11 @@ fn publish(app: &AppHandle, link: &Link, change: impl FnOnce(&mut StateDto)) {
 
 /// Connects to the session bus and makes sure the service is on it.
 fn connect() -> Result<Connection, String> {
-    let conn = Connection::session().map_err(|e| format!("Cannot reach the session bus: {e}"))?;
+    // A call the service never answers must not hang this thread (or a
+    // command) for good; see `quantumengined`'s `dbus_service::claim`.
+    let conn = zbus::blocking::connection::Builder::session()
+        .and_then(|b| b.method_timeout(CALL_TIMEOUT).build())
+        .map_err(|e| format!("Cannot reach the session bus: {e}"))?;
     let bus = DBusProxy::new(&conn).map_err(|e| format!("Cannot reach the session bus: {e}"))?;
     let name = || quantumengine_dbus::BUS_NAME.try_into().expect("a valid bus name");
     if !bus.name_has_owner(name()).unwrap_or(false) {

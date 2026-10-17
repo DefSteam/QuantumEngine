@@ -454,6 +454,14 @@ fn link_str(link: &Link) -> String {
 /// dropping it releases the name.
 pub fn claim() -> zbus::Result<Option<zbus::blocking::Connection>> {
     let connection = zbus::blocking::Connection::session()?;
+    // Start answering calls before taking the name. zbus only begins
+    // dispatching once the object server is first touched, and the interface
+    // is registered a moment later (after the EQ, surround and updater start);
+    // a call that arrived in between used to get no reply at all, and a
+    // client without a timeout (the widget's first `quantumenginectl status`
+    // at login) waited forever. Now such a call gets an immediate "unknown
+    // object" error, which clients retry.
+    connection.object_server();
     match connection.request_name_with_flags(
         quantumengine_dbus::BUS_NAME,
         fdo::RequestNameFlags::DoNotQueue.into(),
