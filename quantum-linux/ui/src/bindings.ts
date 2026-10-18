@@ -68,8 +68,8 @@ export const commands = {
 	/**  Starts installing; progress shows in the state's `update.status`. */
 	installUpdate: () => typedError<null, string>(__TAURI_INVOKE("install_update")),
 	setUpdateChecks: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_update_checks", { enabled })),
-	/**  Replaces an older running service with the installed one. */
-	restartService: () => typedError<null, string>(__TAURI_INVOKE("restart_service")),
+	/**  Restarts the installed service and relaunches the app to finish an update. */
+	restartApp: () => typedError<null, string>(__TAURI_INVOKE("restart_app")),
 	/**
 	 *  Opens the available release's page in the browser. The URL comes from
 	 *  the service, never from the page, and must be this project's.

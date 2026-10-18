@@ -293,7 +293,7 @@ export function installMock(scenario: string) {
           await change((s) => (s.unverified.access = "Waiting for your password…"), 100);
           await change((s) => (s.unverified.access = ""), 1800);
           return null;
-        case "restart_service":
+        case "restart_app":
           await change((s) => {
             Object.assign(s, scenarioState("ready"));
           }, 1200);

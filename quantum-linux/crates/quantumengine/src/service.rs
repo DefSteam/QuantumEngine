@@ -22,6 +22,8 @@ const RECONNECT_EVERY: Duration = Duration::from_secs(1);
 /// How long to wait for a `quantumengined` this window started to claim its
 /// bus name.
 const START_TIMEOUT: Duration = Duration::from_secs(5);
+/// The watcher retries once a second while it replaces the old service.
+const RESTART_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the commands share with the watcher thread.
 #[derive(Default)]
@@ -218,6 +220,21 @@ pub fn restart(link: &Link) -> Result<(), String> {
     }
     // The watcher notices the service is gone and starts the current one.
     Ok(())
+}
+
+/// Waits until the watcher has connected to the installed service version.
+pub fn wait_for_current(link: &Link) -> Result<(), String> {
+    let deadline = Instant::now() + RESTART_TIMEOUT;
+    loop {
+        let state = link.state();
+        if state.service == Service::Up && !state.service_outdated && !state.update.service_version.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err("The updated background service didn't start. Close and reopen QuantumEngine to try again.".into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// A property's value, or its type's default if it is missing or of another

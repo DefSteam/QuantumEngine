@@ -279,14 +279,23 @@ pub async fn set_update_checks(link: Shared<'_>, enabled: bool) -> Result<bool> 
     with_proxy(&link, move |p| p.set_update_checks(enabled)).await
 }
 
-/// Replaces an older running service with the installed one.
+/// Restarts the installed service and relaunches the app to finish an update.
 #[tauri::command]
 #[specta::specta]
-pub async fn restart_service(link: Shared<'_>) -> Result<()> {
-    let link = Arc::clone(&link);
-    tauri::async_runtime::spawn_blocking(move || crate::service::restart(&link))
+pub async fn restart_app(app: tauri::AppHandle, link: Shared<'_>) -> Result<()> {
+    // If the service is older than this window, replace it and wait until the
+    // watcher has connected to the installed version before relaunching. If
+    // the service is already newer, only the window needs to be restarted.
+    if link.state().service_outdated {
+        let link = Arc::clone(&link);
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::service::restart(&link)?;
+            crate::service::wait_for_current(&link)
+        })
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())??;
+    }
+    app.restart()
 }
 
 /// Opens the available release's page in the browser. The URL comes from

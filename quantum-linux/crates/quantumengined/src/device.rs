@@ -13,6 +13,7 @@
 //! reading the battery or the lights state makes the device send another one.
 
 use crate::settings;
+use crate::osd::DialOsd;
 use jbl_quantum::{Anc, Error, Event, Headset, HidrawNode, Sidetone, ZoneLighting, CONFIRM_TIMEOUT};
 use std::cell::{Cell, RefCell};
 use std::io;
@@ -140,11 +141,12 @@ pub struct Snapshot {
 pub type Shared = Arc<Mutex<Snapshot>>;
 
 /// Runs until the command channel closes (the window was closed).
-pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn()) {
+pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn(), dial_osd: DialOsd) {
     let worker = Worker {
         shared,
         commands,
         repaint,
+        dial_osd,
         loose: Cell::new(false),
         reselect: Cell::new(false),
         nodes: RefCell::new(Vec::new()),
@@ -250,6 +252,7 @@ struct Worker<F: Fn()> {
     shared: Shared,
     commands: Receiver<Command>,
     repaint: F,
+    dial_osd: DialOsd,
     /// Serving an unverified model: it may not answer every read, and writes
     /// need the user's permission, one feature at a time.
     loose: Cell<bool>,
@@ -429,7 +432,15 @@ impl<F: Fn()> Worker<F> {
             }
 
             if let Some(event) = h.next_event_timeout(EVENT_WAIT)? {
-                self.update(|s| apply_event(s, event));
+                if let Event::Dial(position) = event {
+                    let changed = self.shared.lock().unwrap().dial != Some(position);
+                    self.update(|s| s.dial = Some(position));
+                    if changed {
+                        self.dial_osd.show(position);
+                    }
+                } else {
+                    self.update(|s| apply_event(s, event));
+                }
             }
 
             if Instant::now() >= next_poll {
@@ -628,6 +639,7 @@ mod tests {
             shared,
             commands,
             repaint: || {},
+            dial_osd: DialOsd::disabled(),
             loose: Cell::new(loose),
             reselect: Cell::new(false),
             nodes: RefCell::new(Vec::new()),

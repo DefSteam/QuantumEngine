@@ -57,7 +57,7 @@ export const api = {
   checkForUpdates: () => unwrap(commands.checkForUpdates()),
   installUpdate: () => unwrap(commands.installUpdate()),
   setUpdateChecks: (on: boolean) => unwrap(commands.setUpdateChecks(on)),
-  restartService: () => unwrap(commands.restartService()),
+  restartApp: () => unwrap(commands.restartApp()),
   openReleasePage: () => unwrap(commands.openReleasePage()),
   openProjectPage: () => unwrap(commands.openProjectPage()),
 };

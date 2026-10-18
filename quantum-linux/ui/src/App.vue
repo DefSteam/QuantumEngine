@@ -110,6 +110,13 @@ onMounted(() => {
       </Transition>
     </main>
   </div>
+  <div v-if="app.pending === 'app:restart'" class="update-overlay" role="status" aria-live="polite">
+    <div class="update-card">
+      <span class="update-spinner" aria-hidden="true"></span>
+      <strong>Applying update</strong>
+      <p>Restarting QuantumEngine and waiting for it to reconnect…</p>
+    </div>
+  </div>
   <ToastHost />
 </template>
 
@@ -192,6 +199,54 @@ onMounted(() => {
   font-family: ui-monospace, "JetBrains Mono", monospace;
   font-size: 12px;
   color: var(--ink);
+}
+
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(14 15 18 / 88%);
+  backdrop-filter: blur(8px);
+}
+
+.update-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 340px);
+  padding: 28px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--film-raised);
+  text-align: center;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 35%);
+}
+
+.update-card strong {
+  font-size: 16px;
+}
+
+.update-card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.update-spinner {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--violet);
+  border-radius: 50%;
+  animation: update-spin 800ms linear infinite;
+}
+
+@keyframes update-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Narrow window with room: the overview stays put and only the open

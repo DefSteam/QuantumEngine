@@ -12,6 +12,7 @@ mod dbus_service;
 mod device;
 mod eq;
 mod notifier;
+mod osd;
 mod pwgraph;
 mod settings;
 mod surround;
@@ -50,6 +51,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let eq = eq::spawn(notifier.clone());
     let surround = surround::spawn(notifier.clone(), eq.clone());
     let updater = update::spawn(notifier.clone());
+    let dial_osd = osd::DialOsd::new(connection.clone());
 
     let dbus_refresh = dbus_service::serve(
         &connection,
@@ -78,7 +80,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     std::thread::Builder::new()
         .name("headset".into())
-        .spawn(move || device::run(shared, command_rx, move || notifier.notify()))
+        .spawn(move || device::run(shared, command_rx, move || notifier.notify(), dial_osd))
         .expect("failed to start the headset thread");
 
     println!("quantumengined: serving {} on the session bus", quantumengine_dbus::BUS_NAME);

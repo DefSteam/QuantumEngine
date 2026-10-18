@@ -9,7 +9,7 @@ import { useApp } from "../stores/app";
 const app = useApp();
 const u = computed(() => app.state.update);
 
-const restarting = computed(() => app.pending === "service:restart");
+const restarting = computed(() => app.pending === "app:restart");
 const installing = computed(() => app.pending === "update:install" || (u.value.busy && !!u.value.available));
 /** The service updated itself but this window is still the old one. */
 const stale = computed(() => !app.state.serviceOutdated && !!u.value.serviceVersion && !!app.info.version && u.value.serviceVersion !== app.info.version);
@@ -24,17 +24,16 @@ async function whatsNew() {
 </script>
 
 <template>
-  <div v-if="app.serviceUp && app.state.serviceOutdated" class="strip" role="status">
+  <div v-if="app.serviceUp && (app.state.serviceOutdated || stale)" class="strip" role="status">
     <div class="text">
-      <strong>An older background service is running</strong>
+      <strong>Restart QuantumEngine to finish updating</strong>
       <span class="sub">
-        It's QuantumEngine {{ u.serviceVersion || "0.2 or earlier" }}, from before this window, so the EQ and
-        update checks aren't there. Restarting it starts the current one.
+        The update is installed. Restart the app to load the new version.
       </span>
     </div>
     <div class="buttons">
-      <button type="button" class="primary" :disabled="app.pending !== null" @click="app.restartService">
-        {{ restarting ? "Restarting…" : "Restart it" }}
+      <button type="button" class="primary" :disabled="app.pending !== null" @click="app.restartApp">
+        {{ restarting ? "Restarting…" : "Restart app" }}
       </button>
     </div>
   </div>
@@ -56,11 +55,6 @@ async function whatsNew() {
       </button>
       <button type="button" class="link-button" @click="whatsNew">What's new</button>
     </div>
-  </div>
-  <div v-else-if="stale" class="strip quiet" role="status">
-    <span class="sub">
-      QuantumEngine {{ u.serviceVersion }} is running. Close and reopen this window to use it here too.
-    </span>
   </div>
 </template>
 

@@ -50,7 +50,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             commands::check_for_updates,
             commands::install_update,
             commands::set_update_checks,
-            commands::restart_service,
+            commands::restart_app,
             commands::open_release_page,
             commands::open_project_page,
         ])

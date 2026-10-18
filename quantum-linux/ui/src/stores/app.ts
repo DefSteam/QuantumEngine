@@ -237,7 +237,7 @@ export const useApp = defineStore("app", () => {
     run(`surround-tune:${name}`, () => api.tuneSurroundProfile(name, profile));
   const checkForUpdates = () => run("update:check", () => api.checkForUpdates());
   const installUpdate = () => run("update:install", () => api.installUpdate());
-  const restartService = () => run("service:restart", () => api.restartService());
+  const restartApp = () => run("app:restart", () => api.restartApp());
   const setUpdateChecks = (on: boolean) => run(`update:checks:${on}`, () => api.setUpdateChecks(on));
 
   function applyLighting() {
@@ -298,7 +298,7 @@ export const useApp = defineStore("app", () => {
     checkForUpdates,
     installUpdate,
     setUpdateChecks,
-    restartService,
+    restartApp,
     applyLighting,
     revertLighting,
   };
