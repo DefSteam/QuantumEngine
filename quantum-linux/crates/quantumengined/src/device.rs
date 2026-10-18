@@ -509,6 +509,9 @@ impl<F: Fn()> Worker<F> {
                 s.device_name = st.device_name;
                 s.serial = st.serial;
                 s.firmware = st.firmware;
+                // A disconnect error is useful only while reconnecting; once
+                // the dongle is live again, the link status is the signal.
+                s.error = None;
             });
         } else {
             let (serial, firmware) = (h.serial()?, h.firmware()?);
