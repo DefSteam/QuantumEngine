@@ -203,7 +203,8 @@ pub struct Status {
 pub struct ZoneLighting {
     pub zone: Zone,
     /// 0-100. The device has no brightness setting, so this dims the colours
-    /// themselves before they are sent.
+    /// themselves before they are sent. Only [`Effect::SOLID`] shows it: the
+    /// animations run at full brightness, so they are sent undimmed.
     pub brightness: u8,
     /// How fast the animation runs, 0-100, higher being faster. JBL's
     /// software offers 25, 50, 75 and 100; anything below 25 runs as 25.
@@ -633,7 +634,10 @@ fn validate_lighting(brightness: u8, speed: u8, palette: &[Colour]) -> Result<()
 /// segments evenly, so five colours start on segments 0, 2, 4, 6 and 8.
 fn lighting_packets(z: &ZoneLighting) -> Vec<Vec<u8>> {
     let n = z.palette.len();
-    let dim = |c: u8| led_drive(c, z.brightness);
+    // Animated effects brighten whatever they get to full, so dimming them
+    // only loses the weaker channels: violet at 5% rounds to pure blue.
+    let brightness = if z.effect == Effect::SOLID { z.brightness } else { 100 };
+    let dim = |c: u8| led_drive(c, brightness);
     let mut packets = vec![vec![feature::LIGHT_CONFIG, z.zone.as_byte(), speed_byte(z.speed), n as u8]];
     for (i, colour) in z.palette.iter().enumerate() {
         packets.push(vec![
@@ -866,6 +870,9 @@ mod tests {
         assert_eq!(lighting_packets(&z)[1][3..6], [55, 29, 0]);
         let off = ZoneLighting { brightness: 0, ..z.clone() };
         assert_eq!(lighting_packets(&off)[1][3..6], [0, 0, 0]);
+        // Animations go out undimmed, keeping their mix: violet stays violet.
+        let breathing = ZoneLighting { brightness: 5, palette: vec![Colour::new(0x80, 0, 0xff)], effect: Effect::BREATHING, ..z };
+        assert_eq!(lighting_packets(&breathing)[1][3..6], [55, 0, 255]);
     }
 
     #[test]
