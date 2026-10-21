@@ -32,16 +32,17 @@ pub fn load() -> LightingDto {
 }
 
 /// Lighting saved before 0.4.5 has no `speed`: the byte it called
-/// brightness was the animation speed all along, so it moves there and the
-/// colours stay at full brightness, which looks exactly as before. Effects
+/// brightness was the animation's period all along (higher is slower), so it
+/// becomes the matching speed and the colours stay at full brightness, which
+/// looks as before. Effects
 /// 7-10 were never real effects and logos can't spin or rise; those become
 /// Wave, the closest JBL effect.
 fn migrate(mut v: serde_json::Value) -> serde_json::Value {
     for name in ["logo", "ring"] {
         let Some(zone) = v.get_mut(name).and_then(|z| z.as_object_mut()) else { continue };
         if !zone.contains_key("speed") {
-            let old = zone.get("brightness").cloned().unwrap_or(serde_json::json!(100));
-            zone.insert("speed".into(), old);
+            let old = zone.get("brightness").and_then(|b| b.as_u64()).unwrap_or(100).clamp(25, 100);
+            zone.insert("speed".into(), serde_json::json!(125 - old));
             zone.insert("brightness".into(), serde_json::json!(100));
         }
         let effect = zone.get("effect").and_then(|e| e.as_u64()).unwrap_or(0);
@@ -113,7 +114,7 @@ mod tests {
             "ring": { "brightness": 100, "colours": ["#ff0000", "#00ff00"], "effect": 10 }
         });
         let l: LightingDto = serde_json::from_value(migrate(old)).unwrap();
-        assert_eq!((l.logo.speed, l.logo.brightness), (80, 100));
+        assert_eq!((l.logo.speed, l.logo.brightness), (45, 100), "the old byte 80 is speed 45");
         assert_eq!(l.logo.effect, Effect::WAVE.0, "logos can't spin");
         assert_eq!(l.ring.effect, Effect::WAVE.0, "10 was never an effect");
         // Already-migrated lighting is left alone.

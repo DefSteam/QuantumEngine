@@ -108,6 +108,25 @@ const LIGHTING_PACKET_GAP: Duration = Duration::from_millis(20);
 /// An animation cycle is ten segments; each key frame starts on one.
 const SEGMENTS: usize = 10;
 
+/// What one screen colour channel, scaled by `brightness` (0-100), drives
+/// the LED at. Colours are picked as sRGB, where a byte of 40 is about 2% of
+/// the light, but the headset takes each byte as LED power, where 40 is 16%:
+/// sent as they are, a red like `#ef2929` lights green and blue enough to
+/// look pink. So the channel is dimmed as it would be on screen, then
+/// decoded to linear light; 0 and 255 stay as they are. Dimming the power
+/// instead barely shows: half the power looks nearly as bright.
+fn led_drive(channel: u8, brightness: u8) -> u8 {
+    let c = channel as f32 / 255.0 * brightness as f32 / 100.0;
+    let linear = if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+    (linear * 255.0).round() as u8
+}
+
+/// The animation byte for a speed. The headset reads it as a period, so a
+/// higher byte runs slower: speed 25-100 is sent as 100-25.
+fn speed_byte(speed: u8) -> u8 {
+    125 - speed.clamp(25, 100)
+}
+
 #[derive(Debug)]
 pub enum Error {
     /// No matching headset dongle is plugged in.
@@ -186,10 +205,10 @@ pub struct ZoneLighting {
     /// 0-100. The device has no brightness setting, so this dims the colours
     /// themselves before they are sent.
     pub brightness: u8,
-    /// How fast the animation runs, 0-100. JBL's software offers 25, 50, 75
-    /// and 100.
+    /// How fast the animation runs, 0-100, higher being faster. JBL's
+    /// software offers 25, 50, 75 and 100; anything below 25 runs as 25.
     pub speed: u8,
-    /// 1..=[`MAX_SLOTS`] colours.
+    /// 1..=[`MAX_SLOTS`] colours, as sRGB on screen: they are converted to LED power when sent.
     pub palette: Vec<Colour>,
     pub effect: Effect,
 }
@@ -614,8 +633,8 @@ fn validate_lighting(brightness: u8, speed: u8, palette: &[Colour]) -> Result<()
 /// segments evenly, so five colours start on segments 0, 2, 4, 6 and 8.
 fn lighting_packets(z: &ZoneLighting) -> Vec<Vec<u8>> {
     let n = z.palette.len();
-    let dim = |c: u8| ((c as u16 * z.brightness as u16 + 50) / 100) as u8;
-    let mut packets = vec![vec![feature::LIGHT_CONFIG, z.zone.as_byte(), z.speed, n as u8]];
+    let dim = |c: u8| led_drive(c, z.brightness);
+    let mut packets = vec![vec![feature::LIGHT_CONFIG, z.zone.as_byte(), speed_byte(z.speed), n as u8]];
     for (i, colour) in z.palette.iter().enumerate() {
         packets.push(vec![
             feature::LIGHT_COLOUR,
@@ -818,13 +837,13 @@ mod tests {
             zone: Zone::Ring,
             brightness: 100,
             speed: 50,
-            palette: vec![Colour::new(0xff, 0, 0), Colour::new(0, 0xff, 0), Colour::new(0, 0, 0xff), Colour::new(1, 2, 3), Colour::new(4, 5, 6)],
+            palette: vec![Colour::new(0xff, 0, 0), Colour::new(0, 0xff, 0), Colour::new(0, 0, 0xff), Colour::new(1, 2, 3), Colour::new(128, 188, 255)],
             effect: Effect::SPIN_COUNTER_CLOCKWISE,
         };
         let p = lighting_packets(&z);
-        assert_eq!(p[0], [0x4C, 0x01, 50, 5]);
+        assert_eq!(p[0], [0x4C, 0x01, 75, 5]);
         assert_eq!(p[1], [0x4D, 0x01, 0, 0xff, 0, 0, 5, 0]);
-        assert_eq!(p[5], [0x4D, 0x01, 4, 4, 5, 6, 5, 8]);
+        assert_eq!(p[5], [0x4D, 0x01, 4, 55, 128, 255, 5, 8]);
         // Start segments spread over the ten-segment cycle.
         let starts: Vec<u8> = p[1..].iter().map(|k| k[7]).collect();
         assert_eq!(starts, [0, 2, 4, 6, 8]);
@@ -840,12 +859,26 @@ mod tests {
             zone: Zone::Logo,
             brightness: 50,
             speed: 100,
-            palette: vec![Colour::new(200, 100, 1)],
+            palette: vec![Colour::new(255, 188, 1)],
             effect: Effect::SOLID,
         };
-        assert_eq!(lighting_packets(&z)[1][3..6], [100, 50, 1]);
+        // Half as bright to the eye is about a fifth of the power.
+        assert_eq!(lighting_packets(&z)[1][3..6], [55, 29, 0]);
         let off = ZoneLighting { brightness: 0, ..z.clone() };
         assert_eq!(lighting_packets(&off)[1][3..6], [0, 0, 0]);
+    }
+
+    #[test]
+    fn higher_speed_runs_faster() {
+        assert_eq!([25, 50, 75, 100].map(speed_byte), [100, 75, 50, 25]);
+        assert_eq!(speed_byte(0), 100, "below JBL's range runs at its slowest");
+    }
+
+    #[test]
+    fn screen_colours_become_led_power() {
+        // The washed-out reds: GTK's red barely lights green and blue.
+        assert_eq!([0xef, 0x29, 0x29].map(|c| led_drive(c, 100)), [220, 6, 6]);
+        assert_eq!((led_drive(0, 100), led_drive(255, 100)), (0, 255));
     }
 
     #[test]

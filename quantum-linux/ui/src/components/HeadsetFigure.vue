@@ -84,8 +84,9 @@ function motion(zone: ZoneDto, which: "logo" | "ring"): Motion {
 
 const SPECTRUM = "#ff3b3b;#ffb02e;#f5f23a;#3ddc6b;#2fc8ff;#5b6cff;#c34bff;#ff3b3b";
 
+/** Only Solid shows the brightness; the headset runs effects at full. */
 function glowOpacity(zone: ZoneDto): number {
-  return 0.25 + 0.65 * (zone.brightness / 100);
+  return 0.25 + 0.65 * (zone.effect === SOLID ? zone.brightness / 100 : 1);
 }
 
 const cups = [

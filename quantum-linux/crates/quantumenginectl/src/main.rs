@@ -56,8 +56,8 @@ COMMANDS:
     rgb effects:  solid, breathing, wave, glitch (logo and ring);
                   spin-clockwise, spin-counter-clockwise, rise (ring only)
     rgb colours:  1-5 hex colours, e.g. '#ff0000'
-    rgb options:  --brightness N   (0-100, default 100; dims the colours)
-                  --speed N        (0-100, default 50)
+    rgb options:  --brightness N   (0-100, default 100; dims solid colours only)
+                  --speed N        (25-100, higher is faster; default 50)
 
 OPTIONS:
     --json      machine-readable output

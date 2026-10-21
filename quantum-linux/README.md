@@ -269,8 +269,9 @@ the headset is off or doesn't respond.
 - solid, breathing, wave, glitch: logo and ring
 - spin-clockwise, spin-counter-clockwise, rise: ring only
 
-`--speed` (0-100, JBL's app offers 25, 50, 75 and 100) sets how fast the
-animation runs, and `--brightness` dims the colours. Up to ten colours per
+`--speed` (25-100, higher is faster; JBL's app offers 25, 50, 75 and 100) sets how fast the
+animation runs, and `--brightness` dims the colours (solid only: the headset
+runs its animated effects at full brightness). Up to ten colours per
 zone. The names earlier versions used (fade, instant, chase, strobe,
 chase-strobe-logo, chase-flash-logo) still work.
 
