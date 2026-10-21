@@ -93,8 +93,10 @@ export type BandDto = {
 
 export type EffectDto = {
 	id: number,
-	/**  Human-readable, e.g. `Chase strobe logo`. */
+	/**  Human-readable, e.g. `Spin clockwise`. */
 	label: string,
+	/**  The zones it suits: `"logo"`, `"ring"`. */
+	zones: string[],
 };
 
 export type EqDto = {
@@ -257,8 +259,10 @@ export type UpdateDto = {
  *  runs (the headset can't report its lighting).
  */
 export type ZoneDto = {
-	/**  0-100. */
+	/**  0-100; dims the colours. */
 	brightness: number,
+	/**  Animation speed, 0-100. */
+	speed: number,
 	/**  `#rrggbb`, one to [`InfoDto::max_colours`] of them. */
 	colours: string[],
 	/**  The raw effect byte, one of [`InfoDto::effects`]. */

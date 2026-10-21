@@ -66,12 +66,13 @@ pub const EQ_MAX_BANDS: usize = 18;
 pub struct ZoneLightingArg {
     /// `"logo"` or `"ring"`.
     pub zone: String,
-    /// 0-100.
+    /// 0-100; dims the colours (the headset has no brightness setting).
     pub brightness: u8,
-    /// 1-5 `(r, g, b)` triples; the device animates through them.
+    /// Animation speed, 0-100.
+    pub speed: u8,
+    /// 1-10 `(r, g, b)` triples; the device animates through them.
     pub colours: Vec<(u8, u8, u8)>,
-    /// The raw effect byte — see `jbl_quantum::protocol::Effect`'s named
-    /// constants for the ones with known behaviour.
+    /// The effect byte, 0-6 — see `jbl_quantum::protocol::Effect`.
     pub effect: u8,
 }
 

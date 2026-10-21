@@ -21,7 +21,7 @@ the device and every command was checked on real hardware.
 | Noise control: Off / ANC / TalkThru | ✓ | ✓ |
 | Sidetone: Off / Low / Mid / High | ✓ | ✓ |
 | Lights on/off | ✓ | ✓ |
-| Lighting colours, brightness, effect (logo and ring), *still under development* | ✓ | ✓ |
+| Lighting colours, speed, brightness, effect (logo and ring) | ✓ | ✓ |
 | Microphone live/muted, game/chat dial | ✓ (live) | ✓ |
 | Live event stream | — | ✓ `watch` |
 | Serial, firmware, paired host name | ✓ | ✓ |
@@ -250,7 +250,7 @@ imported as "My target"
 $ quantumenginectl update
 QuantumEngine 0.3.0 is up to date
 
-$ quantumenginectl rgb both chase '#ff0000' '#0000ff' --brightness 60
+$ quantumenginectl rgb ring spin-clockwise '#ff0000' '#0000ff' --speed 75 --brightness 60
 applied
 
 $ quantumenginectl --json battery
@@ -265,17 +265,14 @@ Run `quantumenginectl --help` for the full list. Setting commands wait until the
 headset confirms the change, then print the new state. They exit non-zero if
 the headset is off or doesn't respond.
 
-**Lighting effects:**
-- fade
-- instant
-- chase
-- strobe
-- chase-strobe-logo
-- chase-flash-logo
-- fast
-- chase-blink-logo
-- rainbow-logo
-- spectrum
+**Lighting effects** (JBL's own seven, by the numbers its app uses):
+- solid, breathing, wave, glitch: logo and ring
+- spin-clockwise, spin-counter-clockwise, rise: ring only
+
+`--speed` (0-100, JBL's app offers 25, 50, 75 and 100) sets how fast the
+animation runs, and `--brightness` dims the colours. Up to ten colours per
+zone. The names earlier versions used (fade, instant, chase, strobe,
+chase-strobe-logo, chase-flash-logo) still work.
 
 The two zones are the **logo** and the **ring** around each earcup. Both
 earcups always show the same thing.

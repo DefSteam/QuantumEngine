@@ -5,7 +5,7 @@
 use crate::dto::{BandDto, EffectDto, InfoDto, LightingDto, StateDto};
 use crate::lighting;
 use crate::service::Link;
-use jbl_quantum::{Effect, MAX_SLOTS};
+use jbl_quantum::{Effect, Zone, MAX_SLOTS};
 use quantumengine_dbus::{HeadsetProxyBlocking, ZoneLightingArg};
 use std::sync::Arc;
 use tauri::State;
@@ -47,7 +47,14 @@ pub fn state(link: Shared<'_>) -> StateDto {
 pub fn info() -> InfoDto {
     InfoDto {
         version: env!("CARGO_PKG_VERSION").into(),
-        effects: Effect::KNOWN.iter().map(|&(e, name)| EffectDto { id: e.0, label: effect_label(name) }).collect(),
+        effects: Effect::KNOWN
+            .iter()
+            .map(|&(e, name)| EffectDto {
+                id: e.0,
+                label: effect_label(name),
+                zones: Zone::ALL.iter().filter(|&&z| e.suits(z)).map(|z| z.as_str().to_string()).collect(),
+            })
+            .collect(),
         max_colours: MAX_SLOTS as u32,
         eq_frequencies: (0..quantumengine_dbus::EQ_RESPONSE_POINTS).map(quantumengine_dbus::eq_response_freq).collect(),
         eq_max_bands: quantumengine_dbus::EQ_MAX_BANDS as u32,
@@ -93,6 +100,7 @@ pub async fn apply_lighting(link: Shared<'_>, lighting: LightingDto) -> Result<(
             Ok(ZoneLightingArg {
                 zone: name.into(),
                 brightness: z.brightness,
+                speed: z.speed,
                 colours: z.colours.iter().map(|c| lighting::parse_hex(c)).collect::<Result<_>>()?,
                 effect: z.effect,
             })
@@ -302,7 +310,7 @@ mod tests {
 
     #[test]
     fn effect_labels_read_as_words() {
-        assert_eq!(effect_label("chase-strobe-logo"), "Chase strobe logo");
-        assert_eq!(effect_label("fade"), "Fade");
+        assert_eq!(effect_label("spin-counter-clockwise"), "Spin counter clockwise");
+        assert_eq!(effect_label("solid"), "Solid");
     }
 }

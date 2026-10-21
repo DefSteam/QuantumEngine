@@ -427,11 +427,25 @@ fn parse_zone_lighting(arg: ZoneLightingArg) -> fdo::Result<ZoneLighting> {
     if arg.brightness > 100 {
         return Err(fdo::Error::InvalidArgs(format!("brightness must be 0-100, got {}", arg.brightness)));
     }
+    if arg.speed > 100 {
+        return Err(fdo::Error::InvalidArgs(format!("speed must be 0-100, got {}", arg.speed)));
+    }
+    let effect = Effect(arg.effect);
+    if !effect.is_known() {
+        return Err(fdo::Error::InvalidArgs(format!("unknown effect {} (want 0-6)", arg.effect)));
+    }
+    if !effect.suits(zone) {
+        return Err(fdo::Error::InvalidArgs(format!(
+            "{} only runs on the ring, not the logo",
+            effect.name().unwrap_or("that effect")
+        )));
+    }
     Ok(ZoneLighting {
         zone,
         brightness: arg.brightness,
+        speed: arg.speed,
         palette: arg.colours.iter().map(|&(r, g, b)| Colour::new(r, g, b)).collect(),
-        effect: Effect(arg.effect),
+        effect,
     })
 }
 

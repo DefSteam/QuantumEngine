@@ -263,8 +263,10 @@ pub struct StateEvent(pub StateDto);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneDto {
-    /// 0-100.
+    /// 0-100; dims the colours.
     pub brightness: u8,
+    /// Animation speed, 0-100.
+    pub speed: u8,
     /// `#rrggbb`, one to [`InfoDto::max_colours`] of them.
     pub colours: Vec<String>,
     /// The raw effect byte, one of [`InfoDto::effects`].
@@ -282,8 +284,10 @@ pub struct LightingDto {
 #[serde(rename_all = "camelCase")]
 pub struct EffectDto {
     pub id: u8,
-    /// Human-readable, e.g. `Chase strobe logo`.
+    /// Human-readable, e.g. `Spin clockwise`.
     pub label: String,
+    /// The zones it suits: `"logo"`, `"ring"`.
+    pub zones: Vec<String>,
 }
 
 /// Facts that don't change while the window is open.

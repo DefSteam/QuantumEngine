@@ -294,7 +294,7 @@ const QUANTUM_810: Features = Features {
     noise_control: Support::verified(""),
     sidetone: Support::verified(""),
     lights: Support::verified(""),
-    lighting: Support::verified("Works; the lighting editor is still being improved."),
+    lighting: Support::verified("Effects, speed and colours as in JBL's own app."),
     eq: Support::verified(""),
 };
 
@@ -308,11 +308,14 @@ const QUANTUM_800: Features = Features {
     ),
     sidetone: Support::from(Status::Reported, "", "issue #2"),
     lights: Support::from(Status::Reported, "", "issue #2"),
-    lighting: Support::from(
-        Status::Broken,
-        "Its effects aren't numbered like the 810's: the ring follows only some combined effects.",
-        "issue #2",
-    ),
+    // Before 0.4.5 the ring followed only some effects (issue #2): effects
+    // were sent that JBL doesn't define, too fast for the 800. Rebuilt from
+    // JBL's own app since; waiting for a new report.
+    lighting: Support {
+        status: Status::Untested,
+        note: "Rebuilt in 0.4.5 to work the way JBL's own app drives the 800; not tried yet.",
+        source: "",
+    },
     eq: Support::UNTESTED,
 };
 

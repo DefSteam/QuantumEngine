@@ -43,8 +43,8 @@ Auto-off timer and hardware volume aren't supported over the dongle.
 <!-- models:start (generated from quantum-linux/crates/jbl-quantum/src/models.rs; run QUANTUMENGINE_UPDATE_README=1 cargo test -p jbl-quantum to refresh) -->
 | Model | USB IDs | Family | Battery and status | Noise control | Sidetone | Lights | Lighting effects | EQ |
 |---|---|---|---|---|---|---|---|---|
-| Quantum 810 Wireless | `0ecb:2069` | Wireless flagship | ✅ | ✅ | ✅ | ✅ | ✅ Works; the lighting editor is still being improved. | ✅ |
-| Quantum 800 | `0ecb:1f47` `0ecb:203e` | Wireless flagship | 🟢 Every read answers; it reports no serial number. (issue #2) | 🟡 Only with the mic boom raised; with it down the headset plays an error tone. (issue #2) | 🟢 (issue #2) | 🟢 (issue #2) | ❌ Its effects aren't numbered like the 810's: the ring follows only some combined effects. (issue #2) | ⚪ |
+| Quantum 810 Wireless | `0ecb:2069` | Wireless flagship | ✅ | ✅ | ✅ | ✅ | ✅ Effects, speed and colours as in JBL's own app. | ✅ |
+| Quantum 800 | `0ecb:1f47` `0ecb:203e` | Wireless flagship | 🟢 Every read answers; it reports no serial number. (issue #2) | 🟡 Only with the mic boom raised; with it down the headset plays an error tone. (issue #2) | 🟢 (issue #2) | 🟢 (issue #2) | ⚪ Rebuilt in 0.4.5 to work the way JBL's own app drives the 800; not tried yet. | ⚪ |
 | Quantum 850 Wireless | `0ecb:219a` `0ecb:219b` `0ecb:219c` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Quantum 910 Wireless | `0ecb:2088` `0ecb:209c` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
 | Quantum 910P Console Wireless | `0ecb:20a2` `0ecb:20a4` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 impl Default for LightingDto {
     fn default() -> Self {
-        let zone = ZoneDto { brightness: 100, colours: vec!["#8a3cff".into()], effect: Effect::FADE.0 };
+        let zone = ZoneDto { brightness: 100, speed: 50, colours: vec!["#8a3cff".into()], effect: Effect::BREATHING.0 };
         Self { logo: zone.clone(), ring: zone }
     }
 }
@@ -24,9 +24,33 @@ fn path() -> Option<PathBuf> {
 pub fn load() -> LightingDto {
     path()
         .and_then(|p| std::fs::read(p).ok())
-        .and_then(|bytes| serde_json::from_slice::<LightingDto>(&bytes).ok())
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .map(migrate)
+        .and_then(|v| serde_json::from_value::<LightingDto>(v).ok())
         .and_then(|l| validate(l).ok())
         .unwrap_or_default()
+}
+
+/// Lighting saved before 0.4.5 has no `speed`: the byte it called
+/// brightness was the animation speed all along, so it moves there and the
+/// colours stay at full brightness, which looks exactly as before. Effects
+/// 7-10 were never real effects and logos can't spin or rise; those become
+/// Wave, the closest JBL effect.
+fn migrate(mut v: serde_json::Value) -> serde_json::Value {
+    for name in ["logo", "ring"] {
+        let Some(zone) = v.get_mut(name).and_then(|z| z.as_object_mut()) else { continue };
+        if !zone.contains_key("speed") {
+            let old = zone.get("brightness").cloned().unwrap_or(serde_json::json!(100));
+            zone.insert("speed".into(), old);
+            zone.insert("brightness".into(), serde_json::json!(100));
+        }
+        let effect = zone.get("effect").and_then(|e| e.as_u64()).unwrap_or(0);
+        let zone_kind = if name == "logo" { jbl_quantum::Zone::Logo } else { jbl_quantum::Zone::Ring };
+        if effect > 255 || !Effect(effect as u8).suits(zone_kind) {
+            zone.insert("effect".into(), serde_json::json!(Effect::WAVE.0));
+        }
+    }
+    v
 }
 
 pub fn save(lighting: &LightingDto) -> Result<(), String> {
@@ -46,6 +70,9 @@ pub fn validate(lighting: LightingDto) -> Result<LightingDto, String> {
     for zone in [&lighting.logo, &lighting.ring] {
         if zone.brightness > 100 {
             return Err("Brightness goes up to 100%.".into());
+        }
+        if zone.speed > 100 {
+            return Err("Speed goes up to 100.".into());
         }
         if zone.colours.is_empty() || zone.colours.len() > MAX_SLOTS {
             return Err(format!("Each zone takes 1 to {MAX_SLOTS} colours."));
@@ -77,6 +104,25 @@ mod tests {
         assert_eq!(parse_hex("8A3CFF"), Ok((0x8a, 0x3c, 0xff)));
         assert!(parse_hex("#fff").is_err());
         assert!(parse_hex("#gg0000").is_err());
+    }
+
+    #[test]
+    fn lighting_from_before_0_4_5_keeps_its_look() {
+        let old = serde_json::json!({
+            "logo": { "brightness": 80, "colours": ["#ffffff"], "effect": 4 },
+            "ring": { "brightness": 100, "colours": ["#ff0000", "#00ff00"], "effect": 10 }
+        });
+        let l: LightingDto = serde_json::from_value(migrate(old)).unwrap();
+        assert_eq!((l.logo.speed, l.logo.brightness), (80, 100));
+        assert_eq!(l.logo.effect, Effect::WAVE.0, "logos can't spin");
+        assert_eq!(l.ring.effect, Effect::WAVE.0, "10 was never an effect");
+        // Already-migrated lighting is left alone.
+        let new = serde_json::json!({
+            "logo": { "brightness": 40, "speed": 75, "colours": ["#ffffff"], "effect": 0 },
+            "ring": { "brightness": 40, "speed": 75, "colours": ["#ffffff"], "effect": 6 }
+        });
+        let l: LightingDto = serde_json::from_value(migrate(new)).unwrap();
+        assert_eq!((l.logo.speed, l.logo.brightness, l.ring.effect), (75, 40, 6));
     }
 
     #[test]

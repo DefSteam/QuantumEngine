@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// One lighting zone's colours, effect and brightness, edited in the draft.
+// One lighting zone's colours, effect, speed and brightness, edited in the draft.
 // The figure repaints as you go; nothing reaches the headset until Apply.
 
 import { computed } from "vue";
@@ -11,6 +11,8 @@ const app = useApp();
 
 const z = computed(() => app.draft?.[props.zone]);
 const effectLabel = computed(() => app.info.effects.find((e) => e.id === z.value?.effect)?.label ?? "Custom effect");
+/** The effects this zone can run: the spins and rise are ring-only. */
+const effects = computed(() => app.info.effects.filter((e) => e.zones.includes(props.zone)));
 
 function setColour(i: number, value: string) {
   if (z.value) z.value.colours[i] = value;
@@ -32,7 +34,7 @@ function removeColour() {
   <section v-if="z" class="zone">
     <div class="head">
       <h3>{{ title }}</h3>
-      <span class="reading num">{{ effectLabel }} · {{ z.brightness }}%</span>
+      <span class="reading num">{{ effectLabel }} · speed {{ z.speed }} · {{ z.brightness }}%</span>
     </div>
 
     <div class="row">
@@ -73,10 +75,24 @@ function removeColour() {
       <label class="name" :for="`${zone}-effect`">Effect</label>
       <div class="select-wrap">
         <select :id="`${zone}-effect`" v-model.number="z.effect">
-          <option v-for="e in app.info.effects" :key="e.id" :value="e.id">{{ e.label }}</option>
-          <option v-if="!app.info.effects.some((e) => e.id === z!.effect)" :value="z.effect">Custom effect</option>
+          <option v-for="e in effects" :key="e.id" :value="e.id">{{ e.label }}</option>
+          <option v-if="!effects.some((e) => e.id === z!.effect)" :value="z.effect">Custom effect</option>
         </select>
       </div>
+    </div>
+
+    <div class="row">
+      <label class="name" :for="`${zone}-speed`">Speed</label>
+      <input
+        :id="`${zone}-speed`"
+        v-model.number="z.speed"
+        class="range"
+        type="range"
+        min="25"
+        max="100"
+        step="25"
+        :style="{ '--fill': `${((z.speed - 25) / 75) * 100}%` }"
+      />
     </div>
 
     <div class="row">

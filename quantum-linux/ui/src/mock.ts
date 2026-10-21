@@ -83,7 +83,7 @@ const Q800: ModelDto = {
     anc: ["caveat", "Only with the mic boom raised; with it down the headset plays an error tone.", "issue #2"],
     sidetone: ["reported", "", "issue #2"],
     lights: ["reported", "", "issue #2"],
-    lighting: ["broken", "Its effects aren't numbered like the 810's: the ring follows only some combined effects.", "issue #2"],
+    lighting: ["untested", "Rebuilt in 0.4.5 to work the way JBL's own app drives the 800; not tried yet."],
   }),
 };
 const STREAM: ModelDto = {
@@ -168,16 +168,18 @@ function scenarioState(scenario: string): StateDto {
 export function installMock(scenario: string) {
   let state = scenarioState(scenario);
   let lighting: LightingDto = {
-    ring: { brightness: 90, colours: ["#8a3cff", "#2fb7ff"], effect: 0 },
-    logo: { brightness: 100, colours: ["#ffffff"], effect: 0 },
+    ring: { brightness: 90, speed: 50, colours: ["#8a3cff", "#2fb7ff"], effect: 4 },
+    logo: { brightness: 100, speed: 50, colours: ["#ffffff"], effect: 0 },
   };
   const info: InfoDto = {
     version: "0.3.0",
-    effects: [
-      [0, "Fade"], [1, "Instant"], [2, "Chase"], [3, "Strobe"], [4, "Chase strobe logo"],
-      [5, "Chase flash logo"], [7, "Fast"], [8, "Chase blink logo"], [9, "Rainbow logo"], [10, "Spectrum"],
-    ].map(([id, label]) => ({ id: id as number, label: label as string })),
-    maxColours: 5,
+    effects: (
+      [
+        [1, "Solid", true], [0, "Breathing", true], [2, "Wave", true], [3, "Glitch", true],
+        [4, "Spin clockwise", false], [5, "Spin counter clockwise", false], [6, "Rise", false],
+      ] as [number, string, boolean][]
+    ).map(([id, label, logo]) => ({ id, label, zones: logo ? ["logo", "ring"] : ["ring"] })),
+    maxColours: 10,
     eqFrequencies: FREQS,
     eqMaxBands: 18,
   };

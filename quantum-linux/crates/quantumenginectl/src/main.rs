@@ -53,11 +53,11 @@ COMMANDS:
     update checks [on|off]      show or set the daily update check
 
     rgb zones:    logo, ring, both
-    rgb effects:  fade, instant, chase, strobe, chase-strobe-logo,
-                  chase-flash-logo, fast, chase-blink-logo, rainbow-logo,
-                  spectrum
+    rgb effects:  solid, breathing, wave, glitch (logo and ring);
+                  spin-clockwise, spin-counter-clockwise, rise (ring only)
     rgb colours:  1-5 hex colours, e.g. '#ff0000'
-    rgb options:  --brightness N   (0-100, default 100)
+    rgb options:  --brightness N   (0-100, default 100; dims the colours)
+                  --speed N        (0-100, default 50)
 
 OPTIONS:
     --json      machine-readable output
@@ -705,12 +705,16 @@ fn link_note(link: &str) -> &'static str {
 
 fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String> {
     let mut brightness: u8 = 100;
+    let mut speed: u8 = 50;
     let mut positional: Vec<&str> = Vec::new();
     let mut it = params.iter();
     while let Some(arg) = it.next() {
         if arg == "--brightness" {
             let value = it.next().ok_or("--brightness needs a value 0-100")?;
             brightness = value.parse().map_err(|_| format!("invalid brightness '{value}'"))?;
+        } else if arg == "--speed" {
+            let value = it.next().ok_or("--speed needs a value 0-100")?;
+            speed = value.parse().ok().filter(|s: &u8| *s <= 100).ok_or_else(|| format!("invalid speed '{value}' (0-100)"))?;
         } else {
             positional.push(arg);
         }
@@ -752,6 +756,7 @@ fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String
                 Zone::Ring => "ring".to_string(),
             },
             brightness,
+            speed,
             colours: palette.iter().map(|c| (c.r, c.g, c.b)).collect(),
             effect: effect.0,
         })
