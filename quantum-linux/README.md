@@ -46,6 +46,10 @@ only then lets you use it and allow noise control, sidetone and lights one at a
 time. Open the **Device** tab, or run `quantumenginectl unverified`. The
 report it makes is what you paste into an issue.
 
+Every model QuantumEngine can recognise, with what's known to work on each, is
+in `crates/jbl-quantum/src/models.rs`; `quantumenginectl models` lists them, and
+the hardware table in the top-level README is generated from the same list.
+
 ## Install
 
 ### Arch / CachyOS / Manjaro

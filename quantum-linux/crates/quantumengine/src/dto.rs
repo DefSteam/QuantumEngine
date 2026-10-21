@@ -30,6 +30,8 @@ pub struct StateDto {
     pub surround: SurroundDto,
     pub update: UpdateDto,
     pub unverified: UnverifiedDto,
+    /// The model being served, from QuantumEngine's catalogue, if it's listed.
+    pub model: Option<ModelDto>,
 }
 
 /// A headset from the same vendor that this software isn't verified on.
@@ -45,6 +47,79 @@ pub struct UnverifiedDto {
     pub in_use: bool,
     /// Any of `"anc"`, `"sidetone"`, `"lights"`: the writes the user allowed.
     pub allowed: Vec<String>,
+    /// What the catalogue knows about it, if it's listed.
+    pub model: Option<ModelDto>,
+}
+
+/// One model from QuantumEngine's catalogue (`jbl_quantum::models`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelDto {
+    /// `vendor:product`.
+    pub id: String,
+    /// e.g. `JBL Quantum 800`.
+    pub name: String,
+    /// e.g. `Wireless flagship`.
+    pub family: String,
+    /// `"headset"` | `"earbuds"` | `"microphone"`.
+    pub kind: String,
+    /// Every feature tested by the project.
+    pub verified: bool,
+    /// What lights up: any of `"logo"`, `"ring"`, `"notch"`.
+    pub zones: Vec<String>,
+    /// Empty for anything that isn't a headset.
+    pub features: Vec<FeatureDto>,
+}
+
+/// What is known about one feature on one model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureDto {
+    /// `"reads"` | `"anc"` | `"sidetone"` | `"lights"` | `"lighting"` | `"eq"`.
+    pub id: String,
+    pub label: String,
+    /// `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"`.
+    pub status: String,
+    pub status_label: String,
+    pub note: String,
+    /// Where the status comes from, e.g. `issue #2`.
+    pub source: String,
+}
+
+impl ModelDto {
+    /// The catalogue entry for `id` (`0ecb:203e`), if there is one.
+    pub fn lookup(id: &str) -> Option<Self> {
+        use jbl_quantum::models::{lookup_id, Feature};
+        let m = lookup_id(id)?;
+        let features = m
+            .features
+            .map(|f| {
+                Feature::ALL
+                    .iter()
+                    .map(|&x| {
+                        let s = f.get(x);
+                        FeatureDto {
+                            id: x.as_str().into(),
+                            label: x.label().into(),
+                            status: s.status.as_str().into(),
+                            status_label: s.status.label().into(),
+                            note: s.note.into(),
+                            source: s.source.into(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            id: id.to_ascii_lowercase(),
+            name: m.full_name(),
+            family: m.family.label().into(),
+            kind: m.kind().as_str().into(),
+            verified: m.verified(),
+            zones: m.zones.iter().map(|z| z.as_str().into()).collect(),
+            features,
+        })
+    }
 }
 
 /// Virtual 7.1 surround, rendered on this PC.
@@ -165,7 +240,9 @@ impl Default for StateDto {
                 access: String::new(),
                 in_use: false,
                 allowed: Vec::new(),
+                model: None,
             },
+            model: None,
             update: UpdateDto {
                 service_version: String::new(),
                 available: String::new(),

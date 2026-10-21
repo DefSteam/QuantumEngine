@@ -36,7 +36,8 @@ const EMPTY_STATE: StateDto = {
   eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
   surround: { enabled: false, status: "" },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
-  unverified: { id: "", name: "", access: "", inUse: false, allowed: [] },
+  unverified: { id: "", name: "", access: "", inUse: false, allowed: [], model: null },
+  model: null,
 };
 
 const SECTIONS: Section[] = ["sound", "lights", "eq", "device"];

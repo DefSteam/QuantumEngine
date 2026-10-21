@@ -125,6 +125,11 @@ impl HeadsetIface {
     }
 
     #[zbus(property)]
+    fn model_id(&self) -> String {
+        self.shared.lock().unwrap().model_id.clone()
+    }
+
+    #[zbus(property)]
     fn unverified_device(&self) -> String {
         self.unverified(|u| u.id.clone())
     }
@@ -518,6 +523,7 @@ pub fn serve(
             zbus::block_on(iface.firmware_changed(emitter)),
             zbus::block_on(iface.busy_changed(emitter)),
             zbus::block_on(iface.last_error_changed(emitter)),
+            zbus::block_on(iface.model_id_changed(emitter)),
             zbus::block_on(iface.unverified_device_changed(emitter)),
             zbus::block_on(iface.unverified_name_changed(emitter)),
             zbus::block_on(iface.unverified_access_changed(emitter)),

@@ -46,7 +46,8 @@ const seenUnverified = new Set<string>();
 watch(
   () => app.state.unverified,
   (u) => {
-    if (u.id && !u.inUse && !seenUnverified.has(u.id)) {
+    const headset = !u.model || u.model.kind === "headset";
+    if (u.id && headset && !u.inUse && !seenUnverified.has(u.id)) {
       seenUnverified.add(u.id);
       app.section = "device";
     }

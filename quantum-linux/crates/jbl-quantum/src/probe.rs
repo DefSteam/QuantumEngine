@@ -81,6 +81,10 @@ impl fmt::Display for ProbeReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "QuantumEngine compatibility report (jbl-quantum {})", env!("CARGO_PKG_VERSION"))?;
         writeln!(f, "Device:   {} \"{}\" at {}", self.id(), self.name, self.path)?;
+        match crate::models::lookup(self.vendor_id, self.product_id) {
+            Some(m) => writeln!(f, "Model:    JBL {} ({}, {})", m.name, m.family.label().to_lowercase(), m.kind().as_str())?,
+            None => writeln!(f, "Model:    not in QuantumEngine's list of models")?,
+        }
         writeln!(
             f,
             "Verified: no (this library is only verified on {:04x}:{:04x})",
@@ -232,6 +236,7 @@ mod tests {
         };
         let text = report.to_string();
         assert!(text.contains("0ecb:203e"));
+        assert!(text.contains("Model:    JBL Quantum 800 (wireless flagship, headset)"), "{text}");
         assert!(text.contains("Verified: no"));
         assert!(text.contains("nothing was written"));
         assert!(text.contains("1 of 2 reads answered, 1 plausible"));

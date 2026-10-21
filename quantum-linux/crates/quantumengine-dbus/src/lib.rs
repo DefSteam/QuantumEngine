@@ -158,6 +158,11 @@ pub trait Headset {
     // opt-in, one feature at a time. All of these are empty when no such
     // device is plugged in.
 
+    /// `vendor:product` of the headset being served (e.g. `0ecb:2069`), or
+    /// empty when none is. Look it up in `jbl_quantum::models`.
+    #[zbus(property)]
+    fn model_id(&self) -> zbus::Result<String>;
+
     /// `vendor:product` (e.g. `0ecb:203e`) of the unverified device, or empty.
     #[zbus(property)]
     fn unverified_device(&self) -> zbus::Result<String>;

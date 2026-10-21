@@ -40,10 +40,46 @@ Auto-off timer and hardware volume aren't supported over the dongle.
 
 ## Supported hardware
 
-| Headset | USB ID | Status |
-|---|---|---|
-| JBL Quantum 810 Wireless | `0ecb:2069` | ✅ tested |
-| Other Harman / JBL Quantum dongles (for example the Quantum 800, `0ecb:203e`) | — | ⚠️ unverified, opt-in |
+<!-- models:start (generated from quantum-linux/crates/jbl-quantum/src/models.rs; run QUANTUMENGINE_UPDATE_README=1 cargo test -p jbl-quantum to refresh) -->
+| Model | USB IDs | Family | Battery and status | Noise control | Sidetone | Lights | Lighting effects | EQ |
+|---|---|---|---|---|---|---|---|---|
+| Quantum 810 Wireless | `0ecb:2069` | Wireless flagship | ✅ | ✅ | ✅ | ✅ | ✅ Works; the lighting editor is still being improved. | ✅ |
+| Quantum 800 | `0ecb:1f47` `0ecb:203e` | Wireless flagship | 🟢 Every read answers; it reports no serial number. (issue #2) | 🟡 Only with the mic boom raised; with it down the headset plays an error tone. (issue #2) | 🟢 (issue #2) | 🟢 (issue #2) | ❌ Its effects aren't numbered like the 810's: the ring follows only some combined effects. (issue #2) | ⚪ |
+| Quantum 850 Wireless | `0ecb:219a` `0ecb:219b` `0ecb:219c` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 910 Wireless | `0ecb:2088` `0ecb:209c` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 910P Console Wireless | `0ecb:20a2` `0ecb:20a4` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 910X Wireless for Xbox | `0ecb:209d` `0ecb:209f` `0ecb:2147` `0ecb:214a` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 950 Wireless | `0ecb:2127` `0ecb:2128` `0ecb:2129` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 950X Wireless | `0ecb:2141` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 950X Wireless for Xbox | `0ecb:213e` `0ecb:2140` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum One | `0ecb:1f48` `0ecb:203a` `0ecb:20c2` | Wireless flagship | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 350 Wireless | `0ecb:2047` `0ecb:206b` `0ecb:20b2` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 360 Wireless | `0ecb:2115` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 360P Console Wireless | `0ecb:20ab` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 360X Wireless for Xbox | `0ecb:20a5` `0ecb:2142` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 520 Wireless | `0ecb:218d` `0ecb:218e` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 520X Wireless for Xbox | `0ecb:21a7` `0ecb:21a9` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 600 | `0ecb:1f46` `0ecb:203c` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 610 Wireless | `0ecb:205c` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 650 Wireless | `0ecb:2125` `0ecb:2126` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 650X Wireless for Xbox | `0ecb:213b` `0ecb:213d` | Mid-range | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 50C | `0ecb:2112` | Wired | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 300 | `0ecb:1f52` | Wired | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum 400 | `0ecb:1f4c` `0ecb:2039` `0ecb:20ee` | Wired | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ |
+| Quantum TWS | `0ecb:208a` `0ecb:209b` | Earbuds | not a headset | — | — | — | — | — |
+| Quantum TWS Air | `0ecb:20be` | Earbuds | not a headset | — | — | — | — | — |
+| Quantum Stream | `0ecb:205f` | Microphone | not a headset | — | — | — | — | — |
+| Quantum Stream Studio | `0ecb:20b0` | Microphone | not a headset | — | — | — | — | — |
+| Quantum Stream Talk | `0ecb:20af` | Microphone | not a headset | — | — | — | — | — |
+| Quantum Stream Wireless | `0ecb:20ed` | Microphone | not a headset | — | — | — | — | — |
+
+✅ verified by the project · 🟢 reported working · 🟡 works, with a catch · ⚪ untested · ❌ doesn't work
+<!-- models:end -->
+
+Own a model that isn't verified? Run the check in the window's **Device** tab
+and send the results with the
+[model report form](https://github.com/sidmax7/QuantumEngine/issues/new?template=model-report.yml).
+Each report updates that model's row.
 
 Only the 810 has been tested. Other models might share the protocol, share part
 of it, or not share it at all, and there is no way to know without trying. So

@@ -6,7 +6,7 @@
 //! answers properties from memory, so this costs it nothing, and unlike a
 //! `PropertiesChanged` subscription it also notices the service going away.
 
-use crate::dto::{EqDto, HeadsetDto, Service, StateDto, StateEvent, SurroundDto, UnverifiedDto, UpdateDto};
+use crate::dto::{EqDto, HeadsetDto, ModelDto, Service, StateDto, StateEvent, SurroundDto, UnverifiedDto, UpdateDto};
 use quantumengine_dbus::HeadsetProxyBlocking;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -135,6 +135,8 @@ fn follow(app: &AppHandle, link: &Link, conn: &Connection) -> String {
 fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
     let mut take = |name: &str| all.remove(name);
     let service_version: String = get(take("Version"));
+    let model_id: String = get(take("ModelId"));
+    let unverified_id: String = get(take("UnverifiedDevice"));
     StateDto {
         service: Service::Up,
         service_error: String::new(),
@@ -165,8 +167,10 @@ fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
             previewing: get(take("EqPreviewing")),
         },
         surround: SurroundDto { enabled: get(take("SurroundEnabled")), status: get(take("SurroundStatus")) },
+        model: ModelDto::lookup(&model_id),
         unverified: UnverifiedDto {
-            id: get(take("UnverifiedDevice")),
+            model: ModelDto::lookup(&unverified_id),
+            id: unverified_id,
             name: get(take("UnverifiedName")),
             access: get(take("UnverifiedAccess")),
             in_use: get(take("UnverifiedInUse")),

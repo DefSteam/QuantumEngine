@@ -70,6 +70,7 @@
 
 mod hidraw;
 pub mod access;
+pub mod models;
 pub mod probe;
 pub mod protocol;
 mod sim;
