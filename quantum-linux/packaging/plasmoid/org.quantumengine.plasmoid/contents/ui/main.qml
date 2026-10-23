@@ -35,6 +35,11 @@ PlasmoidItem {
     // Empty until the first successful read, so a failing command never
     // passes for a real "no dongle" answer.
     property string link: ""
+    // From QuantumEngine's list of models: the headset being served, or an
+    // unverified one that is plugged in. Empty with an older service.
+    property string modelName: ""
+    property string modelKind: ""
+    property bool modelVerified: true
     // Why the last status read failed, shown in place of the controls.
     property string statusError: ""
     property int battery: 0
@@ -72,7 +77,11 @@ PlasmoidItem {
         case "ready": return "Connected";
         case "no_dongle": return "No dongle plugged in";
         case "no_access": return "Cannot access the dongle";
-        case "unverified": return "Unverified model (open QuantumEngine)";
+        case "unverified":
+            if (modelKind !== "" && modelKind !== "headset") {
+                return `No headset (${modelName} is a ${modelKind})`;
+            }
+            return `${modelName !== "" ? modelName : "A headset"}: unverified, open QuantumEngine`;
         case "headset_off": return "Headset off or out of range";
         default: return "Starting…";
         }
@@ -177,6 +186,9 @@ PlasmoidItem {
                     }
                     root.statusError = "";
                     root.link = s.link;
+                    root.modelName = s.model ? s.model.name : "";
+                    root.modelKind = s.model ? s.model.kind : "";
+                    root.modelVerified = s.model ? s.model.verified : true;
                     root.battery = s.battery_percent;
                     // Don't let a poll that raced a command overwrite the
                     // optimistic value before that command has answered.
@@ -210,17 +222,33 @@ PlasmoidItem {
                 root.errorText = data["exit code"] === 0
                     ? ""
                     : String(data.stderr).replace(/^quantumenginectl: /, "").trim();
+                root.statusSince = Date.now();
                 connectSource(root.statusCommand);
             }
         }
     }
+
+    // When the running status request started. Asking again while it runs
+    // does nothing, so one that never finished would leave the widget on
+    // "Starting…" for good; after this long it is dropped and asked afresh.
+    property double statusSince: 0
+    readonly property int statusGiveUpMs: 30000
 
     Timer {
         interval: 2000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: executable.connectSource(root.statusCommand)
+        onTriggered: {
+            if (executable.connectedSources.indexOf(root.statusCommand) !== -1) {
+                if (Date.now() - root.statusSince < root.statusGiveUpMs) {
+                    return;
+                }
+                executable.disconnectSource(root.statusCommand);
+            }
+            root.statusSince = Date.now();
+            executable.connectSource(root.statusCommand);
+        }
     }
 
     compactRepresentation: MouseArea {
@@ -280,7 +308,9 @@ PlasmoidItem {
                 spacing: 0
                 Kirigami.Heading {
                     level: 4
-                    text: "JBL Quantum 810"
+                    text: root.modelName !== "" && root.link === "ready"
+                        ? root.modelName + (root.modelVerified ? "" : " (unverified)")
+                        : "JBL Quantum 810"
                 }
                 PlasmaComponents3.Label {
                     Layout.fillWidth: true

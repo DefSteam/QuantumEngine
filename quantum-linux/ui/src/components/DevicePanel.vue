@@ -16,7 +16,15 @@ const h = computed(() => app.headset);
 const u = computed(() => app.state.update);
 const known = computed(() => app.ready || h.value.serial !== "");
 
+const model = computed(() => app.state.model);
 const rows = computed(() => [
+  ...(model.value
+    ? [
+        { name: "Model", value: model.value.name },
+        { name: "Family", value: model.value.family },
+        { name: "Support", value: model.value.verified ? "Verified" : "Unverified, see above" },
+      ]
+    : []),
   { name: "Paired as", value: known.value ? h.value.deviceName || "—" : "—" },
   { name: "Serial", value: known.value ? h.value.serial || "—" : "—" },
   { name: "Firmware", value: known.value && h.value.firmware.length ? h.value.firmware.join(" · ") : "—" },

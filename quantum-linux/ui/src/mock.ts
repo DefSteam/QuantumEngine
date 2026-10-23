@@ -2,13 +2,16 @@
 // (`npm run dev`, then open http://localhost:1420/?scenario=ready). Only
 // loaded by the dev server outside Tauri; see main.ts. The data is made up.
 //
-// Scenarios: ready, custom, update, outdated, low, off, nodongle, noaccess, down.
+// Scenarios: ready, custom, update, outdated, low, off, nodongle, noaccess, down,
+// unverified, unverifiedAccess, unverifiedUse, unverifiedMic.
 // `&editor` opens the EQ profile editor on the selected profile.
 // Add `&section=lights|eq|device` to open another section.
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
-import type { InfoDto, LightingDto, StateDto } from "./bindings";
+import type {
+  FeatureDto,
+  ModelDto, InfoDto, LightingDto, StateDto } from "./bindings";
 
 const PROFILES = [
   "Flat", "Bass Boost", "Cinematic", "FPS", "MOBA", "RPG", "Apex Legends", "CS2", "Dota 2",
@@ -37,6 +40,61 @@ function curve(profile: string, correction: string): number[] {
     bells.reduce((sum, [fc, g, width]) => sum + g * Math.exp(-((Math.log2(f / fc) / width) ** 2)), 0),
   );
 }
+
+const LABELS: Record<string, string> = {
+  verified: "Verified",
+  reported: "Reported working",
+  caveat: "Works, with a catch",
+  untested: "Untested",
+  broken: "Doesn't work",
+};
+const FEATURES: [string, string][] = [
+  ["reads", "Battery and status"],
+  ["anc", "Noise control"],
+  ["sidetone", "Sidetone"],
+  ["lights", "Lights on/off"],
+  ["lighting", "Lighting effects"],
+  ["eq", "Equalizer"],
+];
+function features(statuses: Record<string, [string, string?, string?]>): FeatureDto[] {
+  return FEATURES.map(([id, label]) => {
+    const [status, note = "", source = ""] = statuses[id] ?? ["untested"];
+    return { id, label, status, statusLabel: LABELS[status]!, note, source };
+  });
+}
+const Q810: ModelDto = {
+  id: "0ecb:2069",
+  name: "JBL Quantum 810 Wireless",
+  family: "Wireless flagship",
+  kind: "headset",
+  verified: true,
+  zones: ["logo", "ring"],
+  features: features(Object.fromEntries(FEATURES.map(([id]) => [id, ["verified", "", "tested by the project"]]))),
+};
+const Q800: ModelDto = {
+  id: "0ecb:203e",
+  name: "JBL Quantum 800",
+  family: "Wireless flagship",
+  kind: "headset",
+  verified: false,
+  zones: ["logo", "ring"],
+  features: features({
+    reads: ["reported", "Every read answers; it reports no serial number.", "issue #2"],
+    anc: ["caveat", "Only with the mic boom raised; with it down the headset plays an error tone.", "issue #2"],
+    sidetone: ["reported", "", "issue #2"],
+    lights: ["reported", "", "issue #2"],
+    lighting: ["untested", "Rebuilt in 0.4.5 to work the way JBL's own app drives the 800; not tried yet."],
+  }),
+};
+const STREAM: ModelDto = {
+  id: "0ecb:205f",
+  name: "JBL Quantum Stream",
+  family: "Microphone",
+  kind: "microphone",
+  verified: false,
+  zones: [],
+  features: [],
+};
 
 function scenarioState(scenario: string): StateDto {
   const unverified = scenario.startsWith("unverified");
@@ -93,9 +151,20 @@ function scenarioState(scenario: string): StateDto {
       }),
       status: "",
     },
-    unverified: unverified
-      ? { id: "0ecb:203e", name: "JBL Quantum800 Wireless", access: scenario === "unverifiedAccess" ? "cannot open /dev/hidraw3: Permission denied (os error 13)" : "", inUse: using, allowed: using ? ["anc"] : [] }
-      : { id: "", name: "", access: "", inUse: false, allowed: [] },
+    model: ready ? (using ? Q800 : Q810) : null,
+    unverified:
+      scenario === "unverifiedMic"
+        ? { id: "0ecb:205f", name: "JBL Quantum Stream", access: "", inUse: false, allowed: [], model: STREAM }
+        : unverified
+          ? {
+              id: "0ecb:203e",
+              name: "JBL Quantum 800",
+              access: scenario === "unverifiedAccess" ? "cannot open /dev/hidraw3: Permission denied (os error 13)" : "",
+              inUse: using,
+              allowed: using ? ["anc"] : [],
+              model: Q800,
+            }
+          : { id: "", name: "", access: "", inUse: false, allowed: [], model: null },
     update: {
       serviceVersion: scenario === "outdated" ? "" : "0.3.0",
       available: scenario === "update" ? "0.3.1" : "",
@@ -110,16 +179,18 @@ function scenarioState(scenario: string): StateDto {
 export function installMock(scenario: string) {
   let state = scenarioState(scenario);
   let lighting: LightingDto = {
-    ring: { brightness: 90, colours: ["#8a3cff", "#2fb7ff"], effect: 0 },
-    logo: { brightness: 100, colours: ["#ffffff"], effect: 0 },
+    ring: { brightness: 90, speed: 50, colours: ["#8a3cff", "#2fb7ff"], effect: 4 },
+    logo: { brightness: 100, speed: 50, colours: ["#ffffff"], effect: 0 },
   };
   const info: InfoDto = {
     version: "0.3.0",
-    effects: [
-      [0, "Fade"], [1, "Instant"], [2, "Chase"], [3, "Strobe"], [4, "Chase strobe logo"],
-      [5, "Chase flash logo"], [7, "Fast"], [8, "Chase blink logo"], [9, "Rainbow logo"], [10, "Spectrum"],
-    ].map(([id, label]) => ({ id: id as number, label: label as string })),
-    maxColours: 5,
+    effects: (
+      [
+        [1, "Solid", true], [0, "Breathing", true], [2, "Wave", true], [3, "Glitch", true],
+        [4, "Spin clockwise", false], [5, "Spin counter clockwise", false], [6, "Rise", false],
+      ] as [number, string, boolean][]
+    ).map(([id, label, logo]) => ({ id, label, zones: logo ? ["logo", "ring"] : ["ring"] })),
+    maxColours: 10,
     eqFrequencies: FREQS,
     eqMaxBands: 18,
   };
@@ -266,7 +337,7 @@ export function installMock(scenario: string) {
           await change(() => {}, 700);
           return [
             "QuantumEngine compatibility report (jbl-quantum 0.4.2)",
-            'Device:   0ecb:203e "JBL Quantum800 Wireless" at /dev/hidraw3',
+            'Device:   0ecb:203e "JBL Quantum 800" at /dev/hidraw3',
             "Verified: no (this library is only verified on 0ecb:2069)",
             "Reads only; nothing was written to the device.",
             "  0x68 link         answered   01                 plausible",

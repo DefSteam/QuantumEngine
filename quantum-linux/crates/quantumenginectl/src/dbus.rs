@@ -6,13 +6,19 @@
 use quantumengine_dbus::HeadsetProxyBlocking;
 use std::time::{Duration, Instant};
 
-/// How long to wait for a `quantumengined` this module started itself
-/// to claim the bus name.
-const SERVICE_START_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long to wait for a `quantumengined` that is starting (ours or one
+/// someone else just started) to claim the bus name and answer.
+const SERVICE_START_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The longest any one call may go unanswered. Without it, a call the
+/// service never answers would leave this command, and whatever runs it
+/// (the Plasma widget), waiting forever.
+const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Connects to the running service, or starts one and waits for it.
 pub fn connect() -> Result<HeadsetProxyBlocking<'static>, String> {
-    let conn = zbus::blocking::Connection::session()
+    let conn = zbus::blocking::connection::Builder::session()
+        .and_then(|b| b.method_timeout(CALL_TIMEOUT).build())
         .map_err(|e| format!("cannot reach the session bus: {e}"))?;
     let bus = zbus::blocking::fdo::DBusProxy::new(&conn)
         .map_err(|e| format!("cannot reach the session bus: {e}"))?;
@@ -29,10 +35,50 @@ pub fn connect() -> Result<HeadsetProxyBlocking<'static>, String> {
     }
     // No property cache: a one-shot CLI invocation reads each property at
     // most once anyway, so there is nothing for a cache to save.
-    HeadsetProxyBlocking::builder(&conn)
+    let proxy = HeadsetProxyBlocking::builder(&conn)
         .cache_properties(zbus::proxy::CacheProperties::No)
         .build()
-        .map_err(|e| format!("cannot reach the headset service: {e}"))
+        .map_err(|e| format!("cannot reach the headset service: {e}"))?;
+    wait_until_serving(&proxy)?;
+    Ok(proxy)
+}
+
+/// A service that has only just started owns its name a moment before it
+/// answers on it, and calls in between fail with "unknown object". Waits
+/// that out; anything else is a real error.
+fn wait_until_serving(proxy: &HeadsetProxyBlocking<'static>) -> Result<(), String> {
+    let deadline = Instant::now() + SERVICE_START_TIMEOUT;
+    loop {
+        match proxy.version() {
+            Ok(_) => return Ok(()),
+            Err(e) if still_starting(&e) && Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) if still_starting(&e) => return Err("quantumengined did not start answering in time".into()),
+            Err(e) => return Err(format!("cannot reach the headset service: {e}")),
+        }
+    }
+}
+
+/// Whether `e` means the service is up but hasn't registered its interface yet.
+fn still_starting(e: &zbus::Error) -> bool {
+    match e {
+        zbus::Error::MethodError(name, _, _) => {
+            let name = name.as_str();
+            name.ends_with(".UnknownObject")
+                || name.ends_with(".UnknownInterface")
+                || name.ends_with(".UnknownMethod")
+                || name.ends_with(".UnknownProperty")
+                || name.ends_with(".ServiceUnknown")
+        }
+        zbus::Error::FDO(e) => matches!(
+            **e,
+            zbus::fdo::Error::UnknownObject(_)
+                | zbus::fdo::Error::UnknownInterface(_)
+                | zbus::fdo::Error::UnknownMethod(_)
+                | zbus::fdo::Error::UnknownProperty(_)
+                | zbus::fdo::Error::ServiceUnknown(_)
+        ),
+        _ => false,
+    }
 }
 
 /// Starts `quantumengined`, found next to this executable — a dev

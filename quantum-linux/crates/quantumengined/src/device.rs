@@ -101,6 +101,8 @@ pub struct Unverified {
     pub in_use: bool,
     /// Any of `anc`, `sidetone`, `lights`.
     pub allowed: Vec<String>,
+    /// Not a headset (a microphone or earbuds): it is shown, never used.
+    pub not_a_headset: bool,
 }
 
 /// Status of a request for access to the unverified device, shown until the
@@ -136,6 +138,8 @@ pub struct Snapshot {
     pub error: Option<String>,
     /// An unverified model that is plugged in, if any.
     pub unverified: Option<Unverified>,
+    /// `vendor:product` of the device being served, e.g. `0ecb:2069`, or empty.
+    pub model_id: String,
 }
 
 pub type Shared = Arc<Mutex<Snapshot>>;
@@ -155,7 +159,10 @@ pub fn run(shared: Shared, commands: Receiver<Command>, repaint: impl Fn(), dial
         match Headset::open_first() {
             Ok(headset) => {
                 worker.loose.set(false);
-                worker.update(|s| s.unverified = None);
+                worker.update(|s| {
+                    s.unverified = None;
+                    s.model_id = format!("{:04x}:{:04x}", jbl_quantum::VENDOR_ID, jbl_quantum::PRODUCT_ID);
+                });
                 match worker.serve(&headset) {
                     Flow::Exit => return,
                     Flow::Reselect => continue,
@@ -201,15 +208,29 @@ struct Found {
     id: String,
     name: String,
     nodes: Vec<HidrawNode>,
+    /// Known not to be a headset: listed so it can be named, never opened.
+    not_a_headset: bool,
 }
 
-/// The first unverified model plugged in, with all of its interfaces.
+/// The first unverified model plugged in, with all of its interfaces. A
+/// headset (or something not in the catalogue) is preferred over a
+/// microphone or earbuds plugged in at the same time.
 fn find_unverified() -> Option<Found> {
     let nodes = Headset::discover_unverified().ok()?;
-    let first = nodes.first()?;
+    let headset_first = |n: &HidrawNode| match jbl_quantum::models::lookup(n.vendor_id, n.product_id) {
+        Some(m) if m.kind() != jbl_quantum::models::Kind::Headset => 1,
+        _ => 0,
+    };
+    let first = nodes.iter().min_by_key(|n| headset_first(n))?;
     let (vendor, product) = (first.vendor_id, first.product_id);
+    let model = jbl_quantum::models::lookup(vendor, product);
     let nodes: Vec<_> = nodes.into_iter().filter(|n| n.product_id == product).collect();
-    Some(Found { id: format!("{vendor:04x}:{product:04x}"), name: nodes[0].name.clone(), nodes })
+    Some(Found {
+        id: format!("{vendor:04x}:{product:04x}"),
+        name: model.map_or_else(|| nodes[0].name.clone(), |m| m.full_name()),
+        not_a_headset: model.is_some_and(|m| m.kind() != jbl_quantum::models::Kind::Headset),
+        nodes,
+    })
 }
 
 /// Opens the interface of an unverified model that answers the headset-link
@@ -297,7 +318,7 @@ impl<F: Fn()> Worker<F> {
     fn unverified(&self, found: Found) -> Flow {
         let choice = settings::load().unverified.get(&found.id).cloned().unwrap_or_default();
         *self.nodes.borrow_mut() = found.nodes.clone();
-        let opened = if choice.in_use { Some(open_best(&found.nodes)) } else { None };
+        let opened = if choice.in_use && !found.not_a_headset { Some(open_best(&found.nodes)) } else { None };
         let access = match &opened {
             Some(Err(why)) => why.clone(),
             _ => String::new(),
@@ -306,8 +327,9 @@ impl<F: Fn()> Worker<F> {
             id: found.id.clone(),
             name: found.name.clone(),
             access,
-            in_use: choice.in_use,
+            in_use: choice.in_use && !found.not_a_headset,
             allowed: choice.allowed.clone(),
+            not_a_headset: found.not_a_headset,
         };
         let serving = matches!(opened, Some(Ok(_)));
         let unchanged = {
@@ -318,6 +340,8 @@ impl<F: Fn()> Worker<F> {
             self.update(|s| {
                 if !serving {
                     *s = Snapshot { link: Link::Unverified, ..Snapshot::default() };
+                } else {
+                    s.model_id = found.id.clone();
                 }
                 s.unverified = Some(want);
             });
@@ -334,6 +358,10 @@ impl<F: Fn()> Worker<F> {
         let until = Instant::now() + REOPEN_EVERY;
         while Instant::now() < until {
             match self.commands.recv_timeout(EVENT_WAIT) {
+                Ok(cmd @ (Command::SetUnverified(..) | Command::Probe(_))) if found.not_a_headset => {
+                    let why = format!("{} isn't a headset; QuantumEngine only controls headsets", found.name);
+                    cmd.fail(Error::Invalid(why));
+                }
                 Ok(Command::SetUnverified(in_use, allowed, reply)) => {
                     let done = self.choose(in_use, allowed);
                     let flow_change = done.is_ok();
@@ -522,6 +550,7 @@ impl<F: Fn()> Worker<F> {
                     firmware,
                     error: s.error.take(),
                     unverified: s.unverified.take(),
+                    model_id: std::mem::take(&mut s.model_id),
                     ..Snapshot::default()
                 }
             });
@@ -657,6 +686,7 @@ mod tests {
             access: String::new(),
             in_use: true,
             allowed: allowed.iter().map(|a| a.to_string()).collect(),
+            not_a_headset: false,
         });
         shared
     }
@@ -746,6 +776,7 @@ mod tests {
                 // An ID no real settings file mentions, and a node that can't be opened.
                 id: "0ecb:ffff".into(),
                 name: "Test model".into(),
+                not_a_headset: false,
                 nodes: vec![HidrawNode {
                     path: "/dev/quantumengine-test-missing".into(),
                     vendor_id: 0x0ecb,
@@ -754,7 +785,8 @@ mod tests {
                 }],
             };
             loop {
-                if matches!(w.unverified(Found { id: found.id.clone(), name: found.name.clone(), nodes: found.nodes.clone() }), Flow::Exit) {
+                let again = Found { id: found.id.clone(), name: found.name.clone(), nodes: found.nodes.clone(), not_a_headset: found.not_a_headset };
+                if matches!(w.unverified(again), Flow::Exit) {
                     return;
                 }
             }
@@ -784,6 +816,51 @@ mod tests {
             assert!(u.allowed.is_empty());
         }
 
+        drop(tx);
+        thread.join().unwrap();
+    }
+
+    /// A microphone or earbuds is named, but never probed, used or allowed anything.
+    #[test]
+    fn a_device_that_is_not_a_headset_is_never_used() {
+        let shared = Shared::default();
+        let (tx, rx) = channel();
+        let shared_for_worker = shared.clone();
+        let thread = std::thread::spawn(move || {
+            let w = worker(rx, shared_for_worker, false);
+            let node = HidrawNode {
+                path: "/dev/quantumengine-test-missing".into(),
+                vendor_id: 0x0ecb,
+                product_id: 0x205f,
+                name: "Quantum Stream".into(),
+            };
+            loop {
+                let found = Found {
+                    id: "0ecb:205f".into(),
+                    name: "JBL Quantum Stream".into(),
+                    nodes: vec![node.clone()],
+                    not_a_headset: true,
+                };
+                if matches!(w.unverified(found), Flow::Exit) {
+                    return;
+                }
+            }
+        });
+
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::Probe(reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Err(Error::Invalid(m)) if m.contains("isn't a headset")));
+        let (reply, answer) = mpsc::channel();
+        tx.send(Command::SetUnverified(true, vec!["anc".into()], reply)).unwrap();
+        assert!(matches!(answer.recv_timeout(Duration::from_secs(5)).unwrap(), Err(Error::Invalid(m)) if m.contains("isn't a headset")));
+        {
+            let s = shared.lock().unwrap();
+            let u = s.unverified.as_ref().unwrap();
+            assert!(u.not_a_headset);
+            assert!(!u.in_use);
+            assert_eq!(u.name, "JBL Quantum Stream");
+            assert!(s.model_id.is_empty());
+        }
         drop(tx);
         thread.join().unwrap();
     }

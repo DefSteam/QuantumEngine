@@ -126,6 +126,11 @@ impl HeadsetIface {
     }
 
     #[zbus(property)]
+    fn model_id(&self) -> String {
+        self.shared.lock().unwrap().model_id.clone()
+    }
+
+    #[zbus(property)]
     fn unverified_device(&self) -> String {
         self.unverified(|u| u.id.clone())
     }
@@ -466,11 +471,25 @@ fn parse_zone_lighting(arg: ZoneLightingArg) -> fdo::Result<ZoneLighting> {
     if arg.brightness > 100 {
         return Err(fdo::Error::InvalidArgs(format!("brightness must be 0-100, got {}", arg.brightness)));
     }
+    if arg.speed > 100 {
+        return Err(fdo::Error::InvalidArgs(format!("speed must be 0-100, got {}", arg.speed)));
+    }
+    let effect = Effect(arg.effect);
+    if !effect.is_known() {
+        return Err(fdo::Error::InvalidArgs(format!("unknown effect {} (want 0-6)", arg.effect)));
+    }
+    if !effect.suits(zone) {
+        return Err(fdo::Error::InvalidArgs(format!(
+            "{} only runs on the ring, not the logo",
+            effect.name().unwrap_or("that effect")
+        )));
+    }
     Ok(ZoneLighting {
         zone,
         brightness: arg.brightness,
+        speed: arg.speed,
         palette: arg.colours.iter().map(|&(r, g, b)| Colour::new(r, g, b)).collect(),
-        effect: Effect(arg.effect),
+        effect,
     })
 }
 
@@ -498,6 +517,14 @@ fn link_str(link: &Link) -> String {
 /// dropping it releases the name.
 pub fn claim() -> zbus::Result<Option<zbus::blocking::Connection>> {
     let connection = zbus::blocking::Connection::session()?;
+    // Start answering calls before taking the name. zbus only begins
+    // dispatching once the object server is first touched, and the interface
+    // is registered a moment later (after the EQ, surround and updater start);
+    // a call that arrived in between used to get no reply at all, and a
+    // client without a timeout (the widget's first `quantumenginectl status`
+    // at login) waited forever. Now such a call gets an immediate "unknown
+    // object" error, which clients retry.
+    connection.object_server();
     match connection.request_name_with_flags(
         quantumengine_dbus::BUS_NAME,
         fdo::RequestNameFlags::DoNotQueue.into(),
@@ -554,6 +581,7 @@ pub fn serve(
             zbus::block_on(iface.firmware_changed(emitter)),
             zbus::block_on(iface.busy_changed(emitter)),
             zbus::block_on(iface.last_error_changed(emitter)),
+            zbus::block_on(iface.model_id_changed(emitter)),
             zbus::block_on(iface.unverified_device_changed(emitter)),
             zbus::block_on(iface.unverified_name_changed(emitter)),
             zbus::block_on(iface.unverified_access_changed(emitter)),
