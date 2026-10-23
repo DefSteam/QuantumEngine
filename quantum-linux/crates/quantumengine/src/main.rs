@@ -76,10 +76,10 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .manage(window_state::Tracker::default())
         .manage(Arc::clone(&link))
-        .invoke_handler(builder.invoke_handler())
+        .manage(window_state::Tracker::default())
         .on_window_event(window_state::on_event)
+        .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
             service::watch(app.handle().clone(), link);

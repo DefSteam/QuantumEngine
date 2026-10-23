@@ -70,6 +70,7 @@
 
 mod hidraw;
 pub mod access;
+pub mod models;
 pub mod probe;
 pub mod protocol;
 mod sim;
@@ -98,6 +99,33 @@ const LIGHTS_RESEND_AFTER: Duration = Duration::from_millis(250);
 /// Pause after the lights-off event before writing the lighting
 /// configuration, to clear the window in which the device ignores writes.
 const LIGHTS_SETTLE: Duration = Duration::from_millis(150);
+
+/// Pause after every lighting packet. JBL's software waits 5 ms after each
+/// one for the Quantum 810 and 20 ms for the Quantum 800, which drops
+/// packets sent faster; 20 ms suits both.
+const LIGHTING_PACKET_GAP: Duration = Duration::from_millis(20);
+
+/// An animation cycle is ten segments; each key frame starts on one.
+const SEGMENTS: usize = 10;
+
+/// What one screen colour channel, scaled by `brightness` (0-100), drives
+/// the LED at. Colours are picked as sRGB, where a byte of 40 is about 2% of
+/// the light, but the headset takes each byte as LED power, where 40 is 16%:
+/// sent as they are, a red like `#ef2929` lights green and blue enough to
+/// look pink. So the channel is dimmed as it would be on screen, then
+/// decoded to linear light; 0 and 255 stay as they are. Dimming the power
+/// instead barely shows: half the power looks nearly as bright.
+fn led_drive(channel: u8, brightness: u8) -> u8 {
+    let c = channel as f32 / 255.0 * brightness as f32 / 100.0;
+    let linear = if c <= 0.040_45 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
+    (linear * 255.0).round() as u8
+}
+
+/// The animation byte for a speed. The headset reads it as a period, so a
+/// higher byte runs slower: speed 25-100 is sent as 100-25.
+fn speed_byte(speed: u8) -> u8 {
+    125 - speed.clamp(25, 100)
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -174,9 +202,14 @@ pub struct Status {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZoneLighting {
     pub zone: Zone,
-    /// 0-100.
+    /// 0-100. The device has no brightness setting, so this dims the colours
+    /// themselves before they are sent. Only [`Effect::SOLID`] shows it: the
+    /// animations run at full brightness, so they are sent undimmed.
     pub brightness: u8,
-    /// 1..=[`MAX_SLOTS`] colours.
+    /// How fast the animation runs, 0-100, higher being faster. JBL's
+    /// software offers 25, 50, 75 and 100; anything below 25 runs as 25.
+    pub speed: u8,
+    /// 1..=[`MAX_SLOTS`] colours, as sRGB on screen: they are converted to LED power when sent.
     pub palette: Vec<Colour>,
     pub effect: Effect,
 }
@@ -479,18 +512,20 @@ impl Headset {
     /// this takes a few hundred milliseconds.
     ///
     /// `palette` must hold 1..=[`MAX_SLOTS`] colours; the device animates
-    /// through them. A single colour gives a solid (still animated) zone —
-    /// there is no separate static mode. The configuration cannot be read back.
+    /// through them. A single colour with [`Effect::SOLID`] gives a steady
+    /// zone. The configuration cannot be read back.
     pub fn set_lighting(
         &self,
         zone: Zone,
         brightness: u8,
+        speed: u8,
         palette: &[Colour],
         effect: Effect,
     ) -> Result<()> {
         self.set_lighting_zones(&[ZoneLighting {
             zone,
             brightness,
+            speed,
             palette: palette.to_vec(),
             effect,
         }])
@@ -500,30 +535,14 @@ impl Headset {
     /// off/on cycle instead of one per zone.
     pub fn set_lighting_zones(&self, zones: &[ZoneLighting]) -> Result<()> {
         for z in zones {
-            validate_lighting(z.brightness, &z.palette)?;
+            validate_lighting(z.brightness, z.speed, &z.palette)?;
         }
         self.set_lights_confirmed(false, CONFIRM_TIMEOUT)?;
         std::thread::sleep(LIGHTS_SETTLE);
         for z in zones {
-            // The slot count must match what is written, or the device
-            // animates through uninitialised slots.
-            self.hid.set_feature(&[
-                feature::LIGHT_CONFIG,
-                z.zone.as_byte(),
-                z.brightness,
-                z.palette.len() as u8,
-            ])?;
-            for (slot, colour) in z.palette.iter().enumerate() {
-                self.hid.set_feature(&[
-                    feature::LIGHT_COLOUR,
-                    z.zone.as_byte(),
-                    slot as u8,
-                    colour.r,
-                    colour.g,
-                    colour.b,
-                    z.effect.0,
-                    (slot as u8) * 2,
-                ])?;
+            for packet in lighting_packets(z) {
+                self.hid.set_feature(&packet)?;
+                std::thread::sleep(LIGHTING_PACKET_GAP);
             }
         }
         self.set_lights_confirmed(true, CONFIRM_TIMEOUT).map(|_| ())
@@ -591,7 +610,7 @@ fn await_matching(
     Ok(false)
 }
 
-fn validate_lighting(brightness: u8, palette: &[Colour]) -> Result<()> {
+fn validate_lighting(brightness: u8, speed: u8, palette: &[Colour]) -> Result<()> {
     if palette.is_empty() || palette.len() > MAX_SLOTS {
         return Err(Error::Invalid(format!(
             "palette must have 1 to {MAX_SLOTS} colours, got {}",
@@ -603,7 +622,36 @@ fn validate_lighting(brightness: u8, palette: &[Colour]) -> Result<()> {
             "brightness must be 0-100, got {brightness}"
         )));
     }
+    if speed > 100 {
+        return Err(Error::Invalid(format!("speed must be 0-100, got {speed}")));
+    }
     Ok(())
+}
+
+/// The reports that configure one zone: its animation (`0x4C`: zone, speed,
+/// key-frame count), then one key frame per colour (`0x4D`: zone, index,
+/// R, G, B, effect, start segment). The key frames share the cycle's ten
+/// segments evenly, so five colours start on segments 0, 2, 4, 6 and 8.
+fn lighting_packets(z: &ZoneLighting) -> Vec<Vec<u8>> {
+    let n = z.palette.len();
+    // Animated effects brighten whatever they get to full, so dimming them
+    // only loses the weaker channels: violet at 5% rounds to pure blue.
+    let brightness = if z.effect == Effect::SOLID { z.brightness } else { 100 };
+    let dim = |c: u8| led_drive(c, brightness);
+    let mut packets = vec![vec![feature::LIGHT_CONFIG, z.zone.as_byte(), speed_byte(z.speed), n as u8]];
+    for (i, colour) in z.palette.iter().enumerate() {
+        packets.push(vec![
+            feature::LIGHT_COLOUR,
+            z.zone.as_byte(),
+            i as u8,
+            dim(colour.r),
+            dim(colour.g),
+            dim(colour.b),
+            z.effect.0,
+            (i * SEGMENTS / n) as u8,
+        ]);
+    }
+    packets
 }
 
 /// Layout: length byte, one unknown byte, then `length` bytes of ASCII.
@@ -777,11 +825,67 @@ mod tests {
     #[test]
     fn lighting_validation() {
         let red = Colour::new(0xff, 0, 0);
-        assert!(validate_lighting(100, &[red]).is_ok());
-        assert!(validate_lighting(0, &[red; MAX_SLOTS]).is_ok());
-        assert!(validate_lighting(101, &[red]).is_err());
-        assert!(validate_lighting(50, &[]).is_err());
-        assert!(validate_lighting(50, &[red; MAX_SLOTS + 1]).is_err());
+        assert!(validate_lighting(100, 100, &[red]).is_ok());
+        assert!(validate_lighting(0, 0, &[red; MAX_SLOTS]).is_ok());
+        assert!(validate_lighting(101, 50, &[red]).is_err());
+        assert!(validate_lighting(50, 101, &[red]).is_err());
+        assert!(validate_lighting(50, 50, &[]).is_err());
+        assert!(validate_lighting(50, 50, &[red; MAX_SLOTS + 1]).is_err());
+    }
+
+    /// Byte for byte what JBL's software sends: 0x4C zone, speed, count;
+    /// 0x4D zone, index, RGB, effect, start segment.
+    #[test]
+    fn lighting_packets_match_the_vendor_layout() {
+        let z = ZoneLighting {
+            zone: Zone::Ring,
+            brightness: 100,
+            speed: 50,
+            palette: vec![Colour::new(0xff, 0, 0), Colour::new(0, 0xff, 0), Colour::new(0, 0, 0xff), Colour::new(1, 2, 3), Colour::new(128, 188, 255)],
+            effect: Effect::SPIN_COUNTER_CLOCKWISE,
+        };
+        let p = lighting_packets(&z);
+        assert_eq!(p[0], [0x4C, 0x01, 75, 5]);
+        assert_eq!(p[1], [0x4D, 0x01, 0, 0xff, 0, 0, 5, 0]);
+        assert_eq!(p[5], [0x4D, 0x01, 4, 55, 128, 255, 5, 8]);
+        // Start segments spread over the ten-segment cycle.
+        let starts: Vec<u8> = p[1..].iter().map(|k| k[7]).collect();
+        assert_eq!(starts, [0, 2, 4, 6, 8]);
+        let three = ZoneLighting { palette: z.palette[..3].to_vec(), ..z.clone() };
+        assert_eq!(lighting_packets(&three)[1..].iter().map(|k| k[7]).collect::<Vec<_>>(), [0, 3, 6]);
+        let ten = ZoneLighting { palette: vec![Colour::new(9, 9, 9); 10], ..z.clone() };
+        assert_eq!(lighting_packets(&ten)[1..].iter().map(|k| k[7]).collect::<Vec<_>>(), (0..10).collect::<Vec<u8>>());
+    }
+
+    #[test]
+    fn brightness_dims_the_colours() {
+        let z = ZoneLighting {
+            zone: Zone::Logo,
+            brightness: 50,
+            speed: 100,
+            palette: vec![Colour::new(255, 188, 1)],
+            effect: Effect::SOLID,
+        };
+        // Half as bright to the eye is about a fifth of the power.
+        assert_eq!(lighting_packets(&z)[1][3..6], [55, 29, 0]);
+        let off = ZoneLighting { brightness: 0, ..z.clone() };
+        assert_eq!(lighting_packets(&off)[1][3..6], [0, 0, 0]);
+        // Animations go out undimmed, keeping their mix: violet stays violet.
+        let breathing = ZoneLighting { brightness: 5, palette: vec![Colour::new(0x80, 0, 0xff)], effect: Effect::BREATHING, ..z };
+        assert_eq!(lighting_packets(&breathing)[1][3..6], [55, 0, 255]);
+    }
+
+    #[test]
+    fn higher_speed_runs_faster() {
+        assert_eq!([25, 50, 75, 100].map(speed_byte), [100, 75, 50, 25]);
+        assert_eq!(speed_byte(0), 100, "below JBL's range runs at its slowest");
+    }
+
+    #[test]
+    fn screen_colours_become_led_power() {
+        // The washed-out reds: GTK's red barely lights green and blue.
+        assert_eq!([0xef, 0x29, 0x29].map(|c| led_drive(c, 100)), [220, 6, 6]);
+        assert_eq!((led_drive(0, 100), led_drive(255, 100)), (0, 255));
     }
 
     #[test]

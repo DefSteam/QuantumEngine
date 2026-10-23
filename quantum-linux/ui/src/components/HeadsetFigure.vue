@@ -57,25 +57,36 @@ function cycle(zone: ZoneDto): string {
 
 type Motion = "steady" | "fade" | "step" | "blink" | "chase" | "spectrum";
 
+/** The effect numbers: JBL's own (see jbl_quantum::Effect). */
+const BREATHING = 0;
+const SOLID = 1;
+const WAVE = 2;
+const GLITCH = 3;
+
 /** How the figure animates an effect. A sketch of it, not a recording. */
 function motion(zone: ZoneDto, which: "logo" | "ring"): Motion {
   if (reducedMotion) return "steady";
-  const label = app.info.effects.find((e) => e.id === zone.effect)?.label.toLowerCase() ?? "";
-  if (label === "spectrum" || (which === "logo" && label === "rainbow logo")) return "spectrum";
-  if (label.startsWith("chase")) {
-    if (which === "ring") return "chase";
-    return label.includes("strobe") || label.includes("flash") || label.includes("blink") ? "blink" : "steady";
+  const several = zone.colours.length > 1;
+  switch (zone.effect) {
+    case BREATHING:
+      return several ? "fade" : "steady";
+    case SOLID:
+      return several ? "step" : "steady";
+    case WAVE:
+      return which === "ring" ? "chase" : several ? "fade" : "steady";
+    case GLITCH:
+      return "blink";
+    default:
+      // Spin clockwise, spin counter-clockwise and rise move around the ring.
+      return which === "ring" ? "chase" : "steady";
   }
-  if (label === "strobe") return "blink";
-  if (label === "instant" || label === "fast") return zone.colours.length > 1 ? "step" : "blink";
-  if (label === "fade") return zone.colours.length > 1 ? "fade" : "steady";
-  return "steady";
 }
 
 const SPECTRUM = "#ff3b3b;#ffb02e;#f5f23a;#3ddc6b;#2fc8ff;#5b6cff;#c34bff;#ff3b3b";
 
+/** Only Solid shows the brightness; the headset runs effects at full. */
 function glowOpacity(zone: ZoneDto): number {
-  return 0.25 + 0.65 * (zone.brightness / 100);
+  return 0.25 + 0.65 * (zone.effect === SOLID ? zone.brightness / 100 : 1);
 }
 
 const cups = [

@@ -6,7 +6,7 @@
 //! answers properties from memory, so this costs it nothing, and unlike a
 //! `PropertiesChanged` subscription it also notices the service going away.
 
-use crate::dto::{EqDto, HeadsetDto, Service, StateDto, StateEvent, SurroundDto, UnverifiedDto, UpdateDto};
+use crate::dto::{EqDto, HeadsetDto, ModelDto, Service, StateDto, StateEvent, SurroundDto, UnverifiedDto, UpdateDto};
 use quantumengine_dbus::HeadsetProxyBlocking;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,6 +24,8 @@ const RECONNECT_EVERY: Duration = Duration::from_secs(1);
 const START_TIMEOUT: Duration = Duration::from_secs(5);
 /// The watcher retries once a second while it replaces the old service.
 const RESTART_TIMEOUT: Duration = Duration::from_secs(20);
+/// The longest one D-Bus call may go unanswered.
+const CALL_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// What the commands share with the watcher thread.
 #[derive(Default)]
@@ -89,7 +91,11 @@ fn publish(app: &AppHandle, link: &Link, change: impl FnOnce(&mut StateDto)) {
 
 /// Connects to the session bus and makes sure the service is on it.
 fn connect() -> Result<Connection, String> {
-    let conn = Connection::session().map_err(|e| format!("Cannot reach the session bus: {e}"))?;
+    // A call the service never answers must not hang this thread (or a
+    // command) for good; see `quantumengined`'s `dbus_service::claim`.
+    let conn = zbus::blocking::connection::Builder::session()
+        .and_then(|b| b.method_timeout(CALL_TIMEOUT).build())
+        .map_err(|e| format!("Cannot reach the session bus: {e}"))?;
     let bus = DBusProxy::new(&conn).map_err(|e| format!("Cannot reach the session bus: {e}"))?;
     let name = || quantumengine_dbus::BUS_NAME.try_into().expect("a valid bus name");
     if !bus.name_has_owner(name()).unwrap_or(false) {
@@ -131,6 +137,8 @@ fn follow(app: &AppHandle, link: &Link, conn: &Connection) -> String {
 fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
     let mut take = |name: &str| all.remove(name);
     let service_version: String = get(take("Version"));
+    let model_id: String = get(take("ModelId"));
+    let unverified_id: String = get(take("UnverifiedDevice"));
     StateDto {
         service: Service::Up,
         service_error: String::new(),
@@ -167,8 +175,10 @@ fn read(mut all: HashMap<String, OwnedValue>) -> StateDto {
             profiles: get(take("SurroundProfiles")),
             status: get(take("SurroundStatus")),
         },
+        model: ModelDto::lookup(&model_id),
         unverified: UnverifiedDto {
-            id: get(take("UnverifiedDevice")),
+            model: ModelDto::lookup(&unverified_id),
+            id: unverified_id,
             name: get(take("UnverifiedName")),
             access: get(take("UnverifiedAccess")),
             in_use: get(take("UnverifiedInUse")),

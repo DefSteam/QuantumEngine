@@ -30,6 +30,8 @@ COMMANDS:
                                 configure lighting and switch it on
     watch                       stream state changes until interrupted
     devices                     list detected dongles
+    models                      every model QuantumEngine knows, and what
+                                works on each
     eq [on|off|<profile>]       show or set the equalizer
     eq list                     list the EQ profiles
     eq tuning [off|stereo|surround]
@@ -51,11 +53,11 @@ COMMANDS:
     update checks [on|off]      show or set the daily update check
 
     rgb zones:    logo, ring, both
-    rgb effects:  fade, instant, chase, strobe, chase-strobe-logo,
-                  chase-flash-logo, fast, chase-blink-logo, rainbow-logo,
-                  spectrum
+    rgb effects:  solid, breathing, wave, glitch (logo and ring);
+                  spin-clockwise, spin-counter-clockwise, rise (ring only)
     rgb colours:  1-5 hex colours, e.g. '#ff0000'
-    rgb options:  --brightness N   (0-100, default 100)
+    rgb options:  --brightness N   (0-100, default 100; dims solid colours only)
+                  --speed N        (25-100, higher is faster; default 50)
 
 OPTIONS:
     --json      machine-readable output
@@ -93,6 +95,11 @@ fn run(args: &[String], json: bool) -> Result<(), String> {
     let (command, params) = args
         .split_first()
         .map_or(("status", &[] as &[String]), |(c, p)| (c.as_str(), p));
+
+    if command == "models" {
+        cmd_models(json);
+        return Ok(());
+    }
 
     if command == "devices" {
         let nodes = Headset::discover().map_err(|e| e.to_string())?;
@@ -221,19 +228,27 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
     let eq = Eq::read(proxy)?;
     let surround = Surround::read(proxy)?;
     let update = UpdateInfo::read(proxy)?;
+    // The headset being served, or else an unverified one that is plugged in.
+    // An older service has neither property.
+    let model_id = match proxy.model_id().unwrap_or_default() {
+        id if id.is_empty() => proxy.unverified_device().unwrap_or_default(),
+        id => id,
+    };
+    let model = jbl_quantum::models::lookup_id(&model_id);
 
     if json {
         let fw: Vec<String> = firmware.iter().map(|f| format!("\"{f}\"")).collect();
         println!(
             "{{\"link\":\"{link}\",\"battery_percent\":{battery},\"anc\":\"{anc}\",\"sidetone\":\"{sidetone}\",\
              \"mic_active\":{mic_active},\"dial\":{dial},\"lights_on\":{lights_on},\"device_name\":\"{}\",\"serial\":\"{}\",\"firmware\":[{}],\
-             \"eq\":{},\"surround\":{},\"update\":{}}}",
+             \"eq\":{},\"surround\":{},\"update\":{},\"model\":{}}}",
             escape(&device_name),
             escape(&serial),
             fw.join(","),
             eq.json(),
             surround.json(),
-            update.json()
+            update.json(),
+            model_json(&model_id, model)
         );
     } else {
         if link != "ready" {
@@ -249,6 +264,9 @@ fn cmd_status(proxy: &HeadsetProxyBlocking, json: bool) -> Result<(), String> {
         println!("paired to: {device_name}");
         println!("serial:    {serial}");
         println!("firmware:  {}", firmware.join(", "));
+        if let Some(m) = model {
+            println!("model:     JBL {} ({})", m.name, if m.verified() { "verified" } else { "unverified" });
+        }
         println!("eq:        {}", eq.summary());
         println!("surround:  {}", surround.summary());
         if !update.available.is_empty() {
@@ -400,6 +418,16 @@ fn cmd_unverified(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -
         );
     } else {
         println!("device:    {id} {name} (not verified)");
+        if let Some(m) = jbl_quantum::models::lookup_id(&id) {
+            println!("family:    {}, {}", m.family.label(), m.kind().as_str());
+            if let Some(f) = m.features {
+                for x in jbl_quantum::models::Feature::ALL {
+                    let s = f.get(x);
+                    let note = if s.note.is_empty() { String::new() } else { format!(": {}", s.note) };
+                    println!("  {:<20} {}{note}", x.label(), s.status.label());
+                }
+            }
+        }
         println!("in use:    {}", if in_use { "yes, read-only except what's allowed" } else { "no" });
         println!("allowed:   {}", if allowed.is_empty() { "nothing (read-only)".to_string() } else { allowed.join(", ") });
         if !access.is_empty() {
@@ -407,6 +435,79 @@ fn cmd_unverified(proxy: &HeadsetProxyBlocking, params: &[String], json: bool) -
         }
     }
     Ok(())
+}
+
+/// A model as JSON for `status`: `null`, or its name, family and whether it's verified.
+fn model_json(id: &str, model: Option<&jbl_quantum::models::Model>) -> String {
+    match model {
+        None => "null".into(),
+        Some(m) => format!(
+            "{{\"id\":\"{}\",\"name\":\"JBL {}\",\"family\":\"{}\",\"kind\":\"{}\",\"verified\":{}}}",
+            escape(id),
+            escape(m.name),
+            m.family.as_str(),
+            m.kind().as_str(),
+            m.verified()
+        ),
+    }
+}
+
+/// Every model in the catalogue, and what's known about each.
+fn cmd_models(json: bool) {
+    use jbl_quantum::models::{Feature, MODELS, VENDOR};
+    if json {
+        let rows: Vec<String> = MODELS
+            .iter()
+            .map(|m| {
+                let ids: Vec<String> = m.ids.iter().map(|p| format!("\"{VENDOR:04x}:{p:04x}\"")).collect();
+                let features = match m.features {
+                    None => "null".to_string(),
+                    Some(f) => {
+                        let items: Vec<String> = Feature::ALL
+                            .iter()
+                            .map(|&x| {
+                                let s = f.get(x);
+                                format!(
+                                    "\"{}\":{{\"status\":\"{}\",\"note\":\"{}\",\"source\":\"{}\"}}",
+                                    x.as_str(),
+                                    s.status.as_str(),
+                                    escape(s.note),
+                                    escape(s.source)
+                                )
+                            })
+                            .collect();
+                        format!("{{{}}}", items.join(","))
+                    }
+                };
+                format!(
+                    "{{\"name\":\"JBL {}\",\"ids\":[{}],\"family\":\"{}\",\"kind\":\"{}\",\"verified\":{},\"features\":{features}}}",
+                    escape(m.name),
+                    ids.join(","),
+                    m.family.as_str(),
+                    m.kind().as_str(),
+                    m.verified()
+                )
+            })
+            .collect();
+        println!("[{}]", rows.join(","));
+        return;
+    }
+    for m in MODELS {
+        let ids: Vec<String> = m.ids.iter().map(|p| format!("{VENDOR:04x}:{p:04x}")).collect();
+        let state = match m.features {
+            None => format!("not a headset ({})", m.kind().as_str()),
+            Some(_) if m.verified() => "verified".into(),
+            Some(f) => {
+                let known: Vec<String> = Feature::ALL
+                    .iter()
+                    .filter(|&&x| f.get(x).status != jbl_quantum::models::Status::Untested)
+                    .map(|&x| format!("{} {}", x.as_str(), f.get(x).status.as_str()))
+                    .collect();
+                if known.is_empty() { "untested".into() } else { format!("unverified: {}", known.join(", ")) }
+            }
+        };
+        println!("{:<36} {:<18} {:<40} {state}", format!("JBL {}", m.name), m.family.label(), ids.join(" "));
+    }
 }
 
 struct UpdateInfo {
@@ -604,12 +705,16 @@ fn link_note(link: &str) -> &'static str {
 
 fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String> {
     let mut brightness: u8 = 100;
+    let mut speed: u8 = 50;
     let mut positional: Vec<&str> = Vec::new();
     let mut it = params.iter();
     while let Some(arg) = it.next() {
         if arg == "--brightness" {
             let value = it.next().ok_or("--brightness needs a value 0-100")?;
             brightness = value.parse().map_err(|_| format!("invalid brightness '{value}'"))?;
+        } else if arg == "--speed" {
+            let value = it.next().ok_or("--speed needs a value 0-100")?;
+            speed = value.parse().ok().filter(|s: &u8| *s <= 100).ok_or_else(|| format!("invalid speed '{value}' (0-100)"))?;
         } else {
             positional.push(arg);
         }
@@ -651,6 +756,7 @@ fn cmd_rgb(proxy: &HeadsetProxyBlocking, params: &[String]) -> Result<(), String
                 Zone::Ring => "ring".to_string(),
             },
             brightness,
+            speed,
             colours: palette.iter().map(|c| (c.r, c.g, c.b)).collect(),
             effect: effect.0,
         })

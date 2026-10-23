@@ -36,7 +36,8 @@ const EMPTY_STATE: StateDto = {
   eq: { enabled: false, profile: "", profiles: [], correction: "", status: "", custom: [], previewing: false },
   surround: { enabled: false, outputGain: 150, profile: "Default", profiles: "", status: "" },
   update: { serviceVersion: "", available: "", canInstall: false, status: "", busy: false, checks: true },
-  unverified: { id: "", name: "", access: "", inUse: false, allowed: [] },
+  unverified: { id: "", name: "", access: "", inUse: false, allowed: [], model: null },
+  model: null,
 };
 
 const SECTIONS: Section[] = ["sound", "lights", "eq", "device"];
@@ -70,6 +71,7 @@ function cloneLighting(l: LightingDto): LightingDto {
 function sameZone(a: ZoneDto, b: ZoneDto): boolean {
   return (
     a.brightness === b.brightness &&
+    a.speed === b.speed &&
     a.effect === b.effect &&
     a.colours.length === b.colours.length &&
     a.colours.every((c, i) => c.toLowerCase() === b.colours[i]?.toLowerCase())
@@ -78,7 +80,7 @@ function sameZone(a: ZoneDto, b: ZoneDto): boolean {
 
 export const useApp = defineStore("app", () => {
   const state = shallowRef<StateDto>(EMPTY_STATE);
-  const info = shallowRef<Info>({ version: "", effects: [], maxColours: 5, eqFrequencies: [], eqMaxBands: 18 });
+  const info = shallowRef<Info>({ version: "", effects: [], maxColours: 10, eqFrequencies: [], eqMaxBands: 18 });
   const section = ref<Section>(initialSection());
   /** What's being changed right now, e.g. `anc:on`; one at a time. */
   const pending = ref<string | null>(null);

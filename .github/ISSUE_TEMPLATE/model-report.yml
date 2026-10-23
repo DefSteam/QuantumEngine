@@ -1,0 +1,66 @@
+name: Model report
+description: Tell us how QuantumEngine works with a headset other than the Quantum 810.
+title: "Model report: JBL Quantum "
+labels: ["model report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Only the Quantum 810 Wireless is verified, so reports like this are how other models get supported.
+        Each one updates that model's row in the README's hardware table.
+
+        Nothing here needs to be risky: step 1 in the app only reads from the headset. Only try changes you're happy to try.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: As printed on the headset or box.
+      placeholder: JBL Quantum 800
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Compatibility report
+      description: |
+        In QuantumEngine, open **Device**, press **Check it**, then **Copy report** and paste it here.
+        Or run `quantumenginectl unverified probe` and paste its output.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: noise
+    attributes:
+      label: Noise control (Off / ANC / TalkThru)
+      options: [Didn't try, Works, "Works, with a catch (explain below)", Doesn't work]
+  - type: dropdown
+    id: sidetone
+    attributes:
+      label: Sidetone
+      options: [Didn't try, Works, "Works, with a catch (explain below)", Doesn't work]
+  - type: dropdown
+    id: lights
+    attributes:
+      label: Lights on/off
+      options: [Didn't try, Works, "Works, with a catch (explain below)", Doesn't work]
+  - type: dropdown
+    id: lighting
+    attributes:
+      label: Lighting colours and effects
+      options: [Didn't try, Works, "Works, with a catch (explain below)", Doesn't work]
+  - type: dropdown
+    id: eq
+    attributes:
+      label: Equalizer
+      options: [Didn't try, Works, "Works, with a catch (explain below)", Doesn't work]
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Anything that worked differently, error messages, which lighting effects did what, and so on.
+  - type: input
+    id: version
+    attributes:
+      label: QuantumEngine version
+      description: Shown on the Device tab (Window and Service).
+      placeholder: "0.4.5"

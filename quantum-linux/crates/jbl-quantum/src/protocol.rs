@@ -163,64 +163,78 @@ impl Zone {
     }
 }
 
-/// Lighting animation.
+/// A lighting effect: how the light moves from one colour to the next.
 ///
-/// A newtype rather than a closed enum: values above 0x0A were never tested, so
-/// the range may extend further and this must not reject what it hasn't seen.
-/// Several effects render differently on the ring than on the logo.
+/// These are the seven effects JBL's own software defines for the Quantum
+/// 400/600/610/800/810/910/One lighting protocol, by its numbers; see
+/// `docs/protocol/lighting-hidv1.md` in the research notes. A newtype rather
+/// than a closed enum, so a raw byte can still be sent, but nothing above
+/// [`Effect::RISE`] is defined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Effect(pub u8);
 
 impl Effect {
-    /// Dims, changes colour, brightens again.
-    pub const FADE: Effect = Effect(0x00);
-    /// Instant colour change, no fade.
-    pub const INSTANT: Effect = Effect(0x01);
-    /// Spatial chase — travels around the ring, radial on the logo.
-    /// This is the effect the vendor software's own captures use.
-    pub const CHASE: Effect = Effect(0x02);
-    /// Rapid blink.
-    pub const STROBE: Effect = Effect(0x03);
-    /// Ring chases while the logo strobes.
-    pub const CHASE_STROBE_LOGO: Effect = Effect(0x04);
-    /// Ring chases while the logo flashes in step.
-    pub const CHASE_FLASH_LOGO: Effect = Effect(0x05);
-    /// Both elements running fast.
-    pub const FAST: Effect = Effect(0x07);
-    /// Chase with the logo blinking about twice per cycle.
-    pub const CHASE_BLINK_LOGO: Effect = Effect(0x08);
-    /// As [`Effect::CHASE_BLINK_LOGO`] with a rainbow logo.
-    pub const RAINBOW_LOGO: Effect = Effect(0x09);
-    /// Generates colours beyond the configured palette.
-    pub const SPECTRUM: Effect = Effect(0x0A);
+    /// Fades in and out between colours.
+    pub const BREATHING: Effect = Effect(0x00);
+    /// Each colour, steady, then straight to the next.
+    pub const SOLID: Effect = Effect(0x01);
+    /// Colours flow across the zone.
+    pub const WAVE: Effect = Effect(0x02);
+    /// Rapid, irregular flicker.
+    pub const GLITCH: Effect = Effect(0x03);
+    /// Runs clockwise around the ring.
+    pub const SPIN_CLOCKWISE: Effect = Effect(0x04);
+    /// Runs counter-clockwise around the ring.
+    pub const SPIN_COUNTER_CLOCKWISE: Effect = Effect(0x05);
+    /// Fills the ring from the bottom up.
+    pub const RISE: Effect = Effect(0x06);
 
-    /// The effects with distinct observed behaviour, for listing in a UI.
-    /// 0x06 is omitted: it was indistinguishable from 0x05 in testing.
-    pub const KNOWN: [(Effect, &'static str); 10] = [
-        (Self::FADE, "fade"),
-        (Self::INSTANT, "instant"),
-        (Self::CHASE, "chase"),
-        (Self::STROBE, "strobe"),
-        (Self::CHASE_STROBE_LOGO, "chase-strobe-logo"),
-        (Self::CHASE_FLASH_LOGO, "chase-flash-logo"),
-        (Self::FAST, "fast"),
-        (Self::CHASE_BLINK_LOGO, "chase-blink-logo"),
-        (Self::RAINBOW_LOGO, "rainbow-logo"),
-        (Self::SPECTRUM, "spectrum"),
+    /// Every defined effect, with the name used on the command line.
+    pub const KNOWN: [(Effect, &'static str); 7] = [
+        (Self::SOLID, "solid"),
+        (Self::BREATHING, "breathing"),
+        (Self::WAVE, "wave"),
+        (Self::GLITCH, "glitch"),
+        (Self::SPIN_CLOCKWISE, "spin-clockwise"),
+        (Self::SPIN_COUNTER_CLOCKWISE, "spin-counter-clockwise"),
+        (Self::RISE, "rise"),
+    ];
+
+    /// Names earlier versions of this crate gave the same bytes, before JBL's
+    /// own were known. Still accepted by [`Effect::from_name`].
+    const OLD_NAMES: [(Effect, &'static str); 6] = [
+        (Self::BREATHING, "fade"),
+        (Self::SOLID, "instant"),
+        (Self::WAVE, "chase"),
+        (Self::GLITCH, "strobe"),
+        (Self::SPIN_CLOCKWISE, "chase-strobe-logo"),
+        (Self::SPIN_COUNTER_CLOCKWISE, "chase-flash-logo"),
     ];
 
     pub fn name(self) -> Option<&'static str> {
-        Self::KNOWN
-            .iter()
-            .find(|(e, _)| *e == self)
-            .map(|(_, name)| *name)
+        Self::KNOWN.iter().find(|(e, _)| *e == self).map(|(_, name)| *name)
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
         Self::KNOWN
             .iter()
+            .chain(Self::OLD_NAMES.iter())
             .find(|(_, n)| *n == name)
             .map(|(e, _)| *e)
+    }
+
+    /// Whether this is one of the seven defined effects.
+    pub fn is_known(self) -> bool {
+        self.0 <= Self::RISE.0
+    }
+
+    /// Whether JBL offers this effect on `zone`: the spins and rise move
+    /// around the ring, so the logo doesn't get them.
+    pub fn suits(self, zone: Zone) -> bool {
+        match zone {
+            Zone::Ring => self.is_known(),
+            Zone::Logo => matches!(self, Self::SOLID | Self::BREATHING | Self::WAVE | Self::GLITCH),
+        }
     }
 }
 
@@ -255,8 +269,9 @@ impl Colour {
     }
 }
 
-/// Maximum colour slots the device animates through, per zone.
-pub const MAX_SLOTS: usize = 5;
+/// Most colours (key frames) one zone animates through. JBL's software allows
+/// ten; earlier versions of this crate stopped at five.
+pub const MAX_SLOTS: usize = 10;
 
 #[cfg(test)]
 mod tests {

@@ -97,8 +97,10 @@ export type BandDto = {
 
 export type EffectDto = {
 	id: number,
-	/**  Human-readable, e.g. `Chase strobe logo`. */
+	/**  Human-readable, e.g. `Spin clockwise`. */
 	label: string,
+	/**  The zones it suits: `"logo"`, `"ring"`. */
+	zones: string[],
 };
 
 export type EqDto = {
@@ -113,6 +115,19 @@ export type EqDto = {
 	custom: string[],
 	/**  Unsaved bands are playing instead of `profile`. */
 	previewing: boolean,
+};
+
+/**  What is known about one feature on one model. */
+export type FeatureDto = {
+	/**  `"reads"` | `"anc"` | `"sidetone"` | `"lights"` | `"lighting"` | `"eq"`. */
+	id: string,
+	label: string,
+	/**  `"verified"` | `"reported"` | `"caveat"` | `"untested"` | `"broken"`. */
+	status: string,
+	statusLabel: string,
+	note: string,
+	/**  Where the status comes from, e.g. `issue #2`. */
+	source: string,
 };
 
 /**
@@ -161,6 +176,24 @@ export type LightingDto = {
 	ring: ZoneDto,
 };
 
+/**  One model from QuantumEngine's catalogue (`jbl_quantum::models`). */
+export type ModelDto = {
+	/**  `vendor:product`. */
+	id: string,
+	/**  e.g. `JBL Quantum 800`. */
+	name: string,
+	/**  e.g. `Wireless flagship`. */
+	family: string,
+	/**  `"headset"` | `"earbuds"` | `"microphone"`. */
+	kind: string,
+	/**  Every feature tested by the project. */
+	verified: boolean,
+	/**  What lights up: any of `"logo"`, `"ring"`, `"notch"`. */
+	zones: string[],
+	/**  Empty for anything that isn't a headset. */
+	features: FeatureDto[],
+};
+
 /**  Whether the window can reach `quantumengined`. */
 export type Service = 
 /**  Looking for it, or starting it. */
@@ -182,6 +215,8 @@ export type StateDto = {
 	surround: SurroundDto,
 	update: UpdateDto,
 	unverified: UnverifiedDto,
+	/**  The model being served, from QuantumEngine's catalogue, if it's listed. */
+	model: ModelDto | null,
 };
 
 export type StateEvent = StateDto;
@@ -210,6 +245,8 @@ export type UnverifiedDto = {
 	inUse: boolean,
 	/**  Any of `"anc"`, `"sidetone"`, `"lights"`: the writes the user allowed. */
 	allowed: string[],
+	/**  What the catalogue knows about it, if it's listed. */
+	model: ModelDto | null,
 };
 
 export type UpdateDto = {
@@ -230,8 +267,10 @@ export type UpdateDto = {
  *  runs (the headset can't report its lighting).
  */
 export type ZoneDto = {
-	/**  0-100. */
+	/**  0-100; dims the colours. */
 	brightness: number,
+	/**  Animation speed, 0-100. */
+	speed: number,
 	/**  `#rrggbb`, one to [`InfoDto::max_colours`] of them. */
 	colours: string[],
 	/**  The raw effect byte, one of [`InfoDto::effects`]. */

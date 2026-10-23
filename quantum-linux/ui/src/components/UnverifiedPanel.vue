@@ -1,27 +1,50 @@
 <script setup lang="ts">
-// A headset from the same vendor that QuantumEngine isn't verified on. Nothing
-// is sent to it until the user says so: first it can be checked with reads only,
-// then used read-only, then given writes one feature at a time.
+// A device from the same vendor that QuantumEngine isn't verified on. What the
+// catalogue knows about the model is shown first. Nothing is sent to a
+// headset until the user says so: first it can be checked with reads only,
+// then used read-only, then given writes one feature at a time. Microphones
+// and earbuds are named and left alone.
 
 import { computed, ref } from "vue";
 import { Copy } from "lucide-vue-next";
+import type { FeatureDto } from "../bindings";
 import { useApp } from "../stores/app";
 import PanelField from "./PanelField.vue";
+import SupportChip from "./SupportChip.vue";
 import ToggleSwitch from "./ToggleSwitch.vue";
 
 const app = useApp();
 
 const u = computed(() => app.state.unverified);
+const model = computed(() => u.value.model);
+const headset = computed(() => !model.value || model.value.kind === "headset");
 const busy = computed(() => app.pending !== null);
 const probing = computed(() => app.pending === "unverified:probe");
 const asking = computed(() => u.value.access.startsWith("Waiting") || app.pending === "unverified:grant");
 const copied = ref(false);
 
-const FEATURES = [
-  { id: "anc", label: "Noise control", hint: "Off, ANC and TalkThru." },
-  { id: "sidetone", label: "Sidetone", hint: "How much of your own voice you hear." },
-  { id: "lights", label: "Lights", hint: "On and off, colours and effects." },
+/** The writes that can be allowed, and the catalogue feature each one covers. */
+const SWITCHES = [
+  { id: "anc", feature: "anc", label: "Noise control", hint: "Off, ANC and TalkThru." },
+  { id: "sidetone", feature: "sidetone", label: "Sidetone", hint: "How much of your own voice you hear." },
+  { id: "lights", feature: "lighting", label: "Lights", hint: "On and off, colours and effects." },
 ];
+
+function known(feature: string): FeatureDto | undefined {
+  return model.value?.features.find((f) => f.id === feature);
+}
+
+/** What's on record for the lights: on/off and effects can differ. */
+function lightsNote(): FeatureDto | undefined {
+  const effects = known("lighting");
+  const onOff = known("lights");
+  if (!effects || !onOff) return effects ?? onOff;
+  return effects.status === "broken" || effects.status === "caveat" ? effects : onOff;
+}
+
+function record(id: string): FeatureDto | undefined {
+  return id === "lights" ? lightsNote() : known(SWITCHES.find((s) => s.id === id)!.feature);
+}
 
 function allow(feature: string, on: boolean) {
   const next = new Set(u.value.allowed);
@@ -42,106 +65,148 @@ async function copyReport() {
 </script>
 
 <template>
-  <PanelField title="Unverified headset">
-    <p class="lead">
-      QuantumEngine is verified on the JBL Quantum 810 Wireless only. This model might work, partly work or not work
-      at all, and nothing is sent to it until you choose.
-    </p>
-    <p class="who">
-      {{ u.name || "Unknown headset" }}
-      <span class="num id">{{ u.id }}</span>
-    </p>
-
-    <div class="step">
-      <h4>1. Check what it answers</h4>
-      <p class="note">
-        This only reads: battery, noise control, sidetone and so on, the same questions the 810 answers. It writes
-        nothing to the headset.
+  <PanelField :title="headset ? 'Unverified headset' : 'Not a headset'">
+    <div class="card">
+      <p class="who">{{ model?.name || u.name || "Unknown device" }}</p>
+      <p class="meta">
+        <span v-if="model">{{ model.family }}</span>
+        <span class="num">{{ u.id }}</span>
+        <span v-if="model?.zones.length">Lights: {{ model.zones.join(", ") }}</span>
       </p>
-      <div class="row">
-        <button type="button" class="secondary" :disabled="busy" @click="app.probeUnverified">
-          {{ probing ? "Checking…" : app.probeText ? "Check again" : "Check it" }}
-        </button>
-        <button
-          type="button"
-          class="secondary"
-          :disabled="busy || asking"
-          title="Needs your password. Adds a rule for this one device."
-          @click="app.grantAccess"
-        >
-          {{ asking ? "Waiting for your password…" : "Allow access…" }}
-        </button>
+    </div>
+
+    <template v-if="!headset">
+      <p class="lead">
+        This is a {{ model?.kind }}. QuantumEngine only controls headsets, so there is nothing to set up for it, and
+        nothing is sent to it.
+      </p>
+    </template>
+
+    <template v-else>
+      <p class="lead">
+        QuantumEngine is verified on the JBL Quantum 810 Wireless only. This model might work, partly work or not work
+        at all, and nothing is sent to it until you choose.
+        <template v-if="!model">It isn't in QuantumEngine's list of models either.</template>
+      </p>
+
+      <div v-if="model" class="step">
+        <h4>What's known about this model</h4>
+        <ul class="known">
+          <li v-for="f in model.features" :key="f.id">
+            <span class="fname">{{ f.label }}</span>
+            <SupportChip :feature="f" />
+            <span v-if="f.note || f.source" class="note">
+              {{ f.note }}<template v-if="f.source"> ({{ f.source }})</template>
+            </span>
+          </li>
+        </ul>
       </div>
-      <p v-if="u.access && !asking" class="problem" role="status">{{ u.access }}</p>
-      <template v-if="app.probeText">
-        <pre class="report" tabindex="0" aria-label="Compatibility report">{{ app.probeText }}</pre>
+
+      <div class="step">
+        <h4>1. Check what it answers</h4>
+        <p class="note">
+          This only reads: battery, noise control, sidetone and so on, the same questions the 810 answers. It writes
+          nothing to the headset.
+        </p>
         <div class="row">
-          <button type="button" class="secondary" @click="copyReport">
-            <Copy :size="14" :stroke-width="1.75" />{{ copied ? "Copied" : "Copy report" }}
+          <button type="button" class="secondary" :disabled="busy" @click="app.probeUnverified">
+            {{ probing ? "Checking…" : app.probeText ? "Check again" : "Check it" }}
           </button>
-          <span class="note">Paste it in a GitHub issue to help us support this model.</span>
+          <button
+            type="button"
+            class="secondary"
+            :disabled="busy || asking"
+            title="Needs your password. Adds a rule for this one device."
+            @click="app.grantAccess"
+          >
+            {{ asking ? "Waiting for your password…" : "Allow access…" }}
+          </button>
         </div>
-      </template>
-      <p v-else class="note">If it says it couldn't open the device, use Allow access first.</p>
-    </div>
-
-    <div class="step">
-      <div class="switch-row">
-        <h4>2. Use this headset</h4>
-        <ToggleSwitch
-          label="Use this unverified headset"
-          :checked="u.inUse"
-          :pending="app.pending === 'unverified:set'"
-          :disabled="busy"
-          @toggle="app.setUnverified($event, u.allowed)"
-        />
+        <p v-if="u.access && !asking" class="problem" role="status">{{ u.access }}</p>
+        <template v-if="app.probeText">
+          <pre class="report" tabindex="0" aria-label="Compatibility report">{{ app.probeText }}</pre>
+          <div class="row">
+            <button type="button" class="secondary" @click="copyReport">
+              <Copy :size="14" :stroke-width="1.75" />{{ copied ? "Copied" : "Copy report" }}
+            </button>
+            <span class="note">Paste it in a GitHub issue to help us support this model.</span>
+          </div>
+        </template>
+        <p v-else class="note">If it says it couldn't open the device, use Allow access first.</p>
       </div>
-      <p class="note">
-        On, QuantumEngine shows what the headset reports, read-only. Anything the headset doesn't answer is left
-        blank.
-      </p>
-    </div>
 
-    <div class="step" :class="{ off: !u.inUse }">
-      <h4>3. Allow changes</h4>
-      <p class="note">
-        Each one sends commands built for the 810. Turn on only what you are happy to try; they may not behave on
-        this model.
-      </p>
-      <div v-for="f in FEATURES" :key="f.id" class="switch-row feature">
-        <span>
-          {{ f.label }}
-          <span class="note">{{ f.hint }}</span>
-        </span>
-        <ToggleSwitch
-          :label="`Allow changing ${f.label.toLowerCase()}`"
-          :checked="u.allowed.includes(f.id)"
-          :disabled="busy || !u.inUse"
-          @toggle="allow(f.id, $event)"
-        />
+      <div class="step">
+        <div class="switch-row">
+          <h4>2. Use this headset</h4>
+          <ToggleSwitch
+            label="Use this unverified headset"
+            :checked="u.inUse"
+            :pending="app.pending === 'unverified:set'"
+            :disabled="busy"
+            @toggle="app.setUnverified($event, u.allowed)"
+          />
+        </div>
+        <p class="note">
+          On, QuantumEngine shows what the headset reports, read-only. Anything the headset doesn't answer is left
+          blank.
+        </p>
       </div>
-    </div>
+
+      <div class="step" :class="{ off: !u.inUse }">
+        <h4>3. Allow changes</h4>
+        <p class="note">
+          Each one sends commands built for the 810. Turn on only what you are happy to try; they may not behave on
+          this model.
+        </p>
+        <div v-for="s in SWITCHES" :key="s.id" class="switch-row feature">
+          <span class="what">
+            <span class="title-line">
+              {{ s.label }}
+              <SupportChip v-if="record(s.id)" :feature="record(s.id)!" />
+            </span>
+            <span class="note">{{ record(s.id)?.note || s.hint }}</span>
+          </span>
+          <ToggleSwitch
+            :label="`Allow changing ${s.label.toLowerCase()}`"
+            :checked="u.allowed.includes(s.id)"
+            :disabled="busy || !u.inUse"
+            @toggle="allow(s.id, $event)"
+          />
+        </div>
+      </div>
+    </template>
   </PanelField>
 </template>
 
 <style scoped>
+.card {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--film);
+}
+
+.who {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 .lead {
   margin: 0 0 12px;
   font-size: 13px;
   color: var(--ink-2);
   text-wrap: pretty;
-}
-
-.who {
-  margin: 0 0 14px;
-  font-weight: 600;
-}
-
-.id {
-  margin-left: 8px;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--ink-3);
 }
 
 .step {
@@ -160,6 +225,32 @@ h4 {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+.known {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px 12px;
+  align-items: baseline;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.known li {
+  display: contents;
+}
+
+.fname {
+  font-size: 13px;
+}
+
+.known li > .note {
+  grid-column: 3;
+}
+
+.known :deep(.chip) {
+  justify-self: start;
 }
 
 .note {
@@ -188,8 +279,16 @@ h4 {
   font-size: 13px;
 }
 
-.feature .note {
-  display: block;
+.what {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .problem {
@@ -209,5 +308,16 @@ h4 {
   font: 12px/1.5 ui-monospace, "JetBrains Mono", monospace;
   color: var(--ink-2);
   white-space: pre;
+}
+
+@media (max-width: 520px) {
+  .known {
+    grid-template-columns: 1fr auto;
+  }
+
+  .known li > .note {
+    grid-column: 1 / -1;
+    margin-bottom: 4px;
+  }
 }
 </style>

@@ -19,14 +19,18 @@ const status = computed((): { title: string; detail: string; live: boolean } => 
       return { title: "Connected", detail: s.headset.deviceName ? `Paired as ${s.headset.deviceName}` : "Paired", live: true };
     case "headset_off":
       return { title: "Headset off", detail: "The dongle is plugged in. Switch the headset on, or bring it closer.", live: false };
-    case "unverified":
+    case "unverified": {
+      const m = s.unverified.model;
+      const name = m?.name || s.unverified.name || "A device";
+      if (m && m.kind !== "headset") {
+        return { title: "No headset", detail: `${name} is a ${m.kind}. Plug in the headset's dongle.`, live: false };
+      }
       return {
         title: "Unverified model",
-        detail: s.unverified.name
-          ? `${s.unverified.name} (${s.unverified.id}) isn't a verified model. Open Device to check it.`
-          : "A headset of an unverified model is plugged in. Open Device to check it.",
+        detail: `${name} (${s.unverified.id}) isn't a verified model. Open Device to check it.`,
         live: false,
       };
+    }
     case "no_access":
       return {
         title: "No access",
